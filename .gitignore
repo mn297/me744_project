@@ -11,7 +11,7 @@ Convolution-Neural-Network-deeplearning.ai-Andrew-Ng-/
 .venv/
 output/
 
-# *.pth
+*.pth
 # Datasets
 pointvessel_data.zip
 pointvessel_data/

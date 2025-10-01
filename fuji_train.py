@@ -314,7 +314,7 @@ def visualize_predictions(model, dataset, device, num_samples=6):
         # Convert to numpy
         image_np = image.permute(1, 2, 0).numpy()
         mask_np = mask.squeeze().numpy()
-        pred_np = pred.numpy()
+        pred_np = pred.float().numpy()  # Convert from BFloat16 to float32 first
         pred_binary = (pred_np > 0.5).astype(np.float32)
 
         # Plot
@@ -352,7 +352,7 @@ def visualize_comparison(model, dataset, device, idx=0):
     # Convert to numpy
     image_np = image.permute(1, 2, 0).numpy()
     mask_np = mask.squeeze().numpy()
-    pred_np = pred.numpy()
+    pred_np = pred.float().numpy()  # Convert from BFloat16 to float32 first
     pred_binary = (pred_np > 0.5).astype(np.float32)
 
     # Calculate metrics

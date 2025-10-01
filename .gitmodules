@@ -1,0 +1,3 @@
+[submodule "cdlo-datasets"]
+	path = cdlo-datasets
+	url = https://github.com/heti2000/cdlo-datasets.git

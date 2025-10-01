@@ -1,0 +1,19 @@
+datasets/          # root-level
+**/datasets/       # any depth (e.g. src/foo/datasets/)
+graphics/datasets/ # keeps current explicit entry
+temp/
+data/
+*.fbx
+CMU_fbx.zip
+CMU_fbx
+datasets/
+Convolution-Neural-Network-deeplearning.ai-Andrew-Ng-/
+.venv/
+output/
+
+# *.pth
+# Datasets
+pointvessel_data.zip
+pointvessel_data/
+fuji_sfm_data/
+Fuji-SfM_dataset.rar

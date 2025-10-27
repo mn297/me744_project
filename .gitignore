@@ -21,3 +21,5 @@ Fuji-SfM_dataset.rar
 
 # SAM2
 site-packages
+# misc
+.DS_Store

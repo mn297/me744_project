@@ -5,9 +5,9 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12.11"
 dependencies = [
-    "genesis-world>=0.3.3",
     "numpy>=2.3.3",
     "open3d>=0.19.0",
+    "opencv-python>=4.11.0.86",
     "torch>=2.8.0",
     "torchvision>=0.23.0",
 ]

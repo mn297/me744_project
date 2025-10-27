@@ -208,7 +208,8 @@ def extract_rar(filename, extract_dir):
 
 def clone_and_install_sam2():
     """Clone SAM2 repository and install it in editable mode."""
-    sam2_dir = Path.home() / "sam2"
+    # sam2_dir = Path.home() / "sam2"
+    sam2_dir = Path("site-packages/sam2")
     sam2_url = "https://github.com/facebookresearch/segment-anything-2.git"
 
     print("\n--- Setting up SAM2 ---")
@@ -246,21 +247,45 @@ def clone_and_install_sam2():
 
     # Install in editable mode
     print(f"Installing SAM2 in editable mode...")
-    try:
-        result = subprocess.run(
-            [sys.executable, "-m", "pip", "install", "-e", str(sam2_dir)],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        print("✓ Successfully installed SAM2 in editable mode")
-        return True
-    except subprocess.CalledProcessError as e:
-        print(f"✗ Failed to install SAM2: {e.stderr}")
-        return False
-    except Exception as e:
-        print(f"✗ Error installing SAM2: {e}")
-        return False
+
+    # Detect if we're using uv or traditional pip
+    install_commands = []
+
+    # Try uv first (if available)
+    if shutil.which("uv"):
+        print("✓ Using uv for installation")
+        install_commands.append(["uv", "pip", "install", "-e", str(sam2_dir)])
+
+    # Fallback to traditional pip
+    install_commands.append(
+        [sys.executable, "-m", "pip", "install", "-e", str(sam2_dir)]
+    )
+
+    # Try each installation method
+    for cmd in install_commands:
+        try:
+            result = subprocess.run(
+                cmd,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            print("✓ Successfully installed SAM2 in editable mode")
+            return True
+        except subprocess.CalledProcessError as e:
+            if cmd == install_commands[-1]:  # Last command failed
+                print(f"✗ Failed to install SAM2: {e.stderr}")
+                return False
+            # Try next method
+            continue
+        except Exception as e:
+            if cmd == install_commands[-1]:  # Last command failed
+                print(f"✗ Error installing SAM2: {e}")
+                return False
+            # Try next method
+            continue
+
+    return False
 
 
 def is_directory_empty(directory_path):

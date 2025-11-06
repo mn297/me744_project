@@ -18,7 +18,8 @@ pointvessel_data/
 fuji_sfm_data/
 Fuji-SfM_dataset/
 Fuji-SfM_dataset.rar
-
+Fuji-Apple-Segmentation/
+Car-Parts-Segmentation/
 
 # SAM2
 site-packages

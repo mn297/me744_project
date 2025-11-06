@@ -14,10 +14,10 @@ from pathlib import Path
 
 # Dataset configuration - add new datasets here
 DATASETS = {
-    "pointvessel_data.zip": {
-        "url": "https://nextcloud.in.tum.de/index.php/s/7ooyYxoP6HyPXQK/download?path=/&files=pointvessel_data.zip&downloadStartSecret=i46y2qmnsg",
-        "extract_dir": "pointvessel_data",
-    },
+    # "pointvessel_data.zip": {
+    #     "url": "https://nextcloud.in.tum.de/index.php/s/7ooyYxoP6HyPXQK/download?path=/&files=pointvessel_data.zip&downloadStartSecret=i46y2qmnsg",
+    #     "extract_dir": "pointvessel_data",
+    # },
     "Fuji-SfM_dataset.rar": {
         "url": "https://zenodo.org/records/3712808/files/Fuji-SfM_dataset.rar?download=1",
         "extract_dir": "fuji_sfm_data",

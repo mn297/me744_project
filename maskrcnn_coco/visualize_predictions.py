@@ -418,7 +418,7 @@ DEF = {
     "train_anno": ROOT / "Fuji-Apple-Segmentation/trainingset/annotations.json",
     "val_images": ROOT / "Fuji-Apple-Segmentation/testset/JPEGImages",
     "val_anno": ROOT / "Fuji-Apple-Segmentation/testset/annotations.json",
-    "checkpoint": ROOT / "checkpoints/epoch_029.pth",
+    "checkpoint": ROOT / "checkpoints/best_bbox_ap.pth",
     "output_dir": ROOT / "visualizations",
     "dataset_name": "Fuji-Apple-Segmentation",
 }

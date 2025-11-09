@@ -25,3 +25,7 @@ Car-Parts-Segmentation/
 site-packages
 # misc
 .DS_Store
+
+# MLOps
+runs/
+checkpoints/

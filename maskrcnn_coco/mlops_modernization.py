@@ -21,18 +21,21 @@ from torch.utils.tensorboard import SummaryWriter
 # Optional MLOps libraries
 try:
     import wandb
+
     WANDB_AVAILABLE = True
 except ImportError:
     WANDB_AVAILABLE = False
 
 try:
     import mlflow
+
     MLFLOW_AVAILABLE = True
 except ImportError:
     MLFLOW_AVAILABLE = False
 
 try:
     from omegaconf import OmegaConf, DictConfig
+
     HYDRA_AVAILABLE = True
 except ImportError:
     HYDRA_AVAILABLE = False
@@ -45,7 +48,7 @@ class ExperimentTracker:
     - Weights & Biases (optional)
     - MLflow (optional)
     """
-    
+
     def __init__(
         self,
         experiment_name: str,
@@ -60,17 +63,17 @@ class ExperimentTracker:
         self.project_name = project_name
         self.config = config or {}
         self.tags = tags or []
-        
+
         # Create unique run ID
         self.run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.run_name = f"{experiment_name}_{self.run_id}"
-        
+
         # TensorBoard (always available)
         log_path = Path(log_dir) / self.run_name
         self.tb_writer = SummaryWriter(log_dir=str(log_path))
         print(f"📊 TensorBoard logs: {log_path}")
         print(f"   View with: tensorboard --logdir {log_dir}")
-        
+
         # Weights & Biases
         self.wandb_run = None
         if use_wandb and WANDB_AVAILABLE:
@@ -84,7 +87,7 @@ class ExperimentTracker:
             print(f"🔮 Weights & Biases: {wandb.run.url}")
         elif use_wandb and not WANDB_AVAILABLE:
             print("⚠️  W&B requested but not installed. Install with: pip install wandb")
-        
+
         # MLflow
         self.mlflow_run = None
         if use_mlflow and MLFLOW_AVAILABLE:
@@ -94,74 +97,76 @@ class ExperimentTracker:
                 mlflow.log_params(self.config)
             print(f"📦 MLflow run: {self.mlflow_run.info.run_id}")
         elif use_mlflow and not MLFLOW_AVAILABLE:
-            print("⚠️  MLflow requested but not installed. Install with: pip install mlflow")
-    
+            print(
+                "⚠️  MLflow requested but not installed. Install with: pip install mlflow"
+            )
+
     def log_scalar(self, key: str, value: float, step: int):
         """Log scalar metric to all active trackers."""
         self.tb_writer.add_scalar(key, value, step)
-        
+
         if self.wandb_run:
             wandb.log({key: value}, step=step)
-        
+
         if self.mlflow_run:
             mlflow.log_metric(key, value, step=step)
-    
+
     def log_scalars(self, metrics: Dict[str, float], step: int):
         """Log multiple scalars at once."""
         for key, value in metrics.items():
             self.log_scalar(key, value, step)
-    
+
     def log_image(self, key: str, image, step: int):
         """Log image to trackers."""
         self.tb_writer.add_image(key, image, step)
-        
+
         if self.wandb_run:
             wandb.log({key: wandb.Image(image)}, step=step)
-        
+
         if self.mlflow_run:
             mlflow.log_image(image, f"{key}_step_{step}.png")
-    
+
     def log_model(self, model_path: str, metadata: Optional[Dict] = None):
         """Log model artifact."""
         if self.wandb_run:
             artifact = wandb.Artifact("model", type="model")
             artifact.add_file(model_path)
             wandb.log_artifact(artifact)
-        
+
         if self.mlflow_run:
             mlflow.log_artifact(model_path, "models")
             if metadata:
                 mlflow.log_dict(metadata, "model_metadata.json")
-    
+
     def log_config(self, config: Dict[str, Any]):
         """Log configuration/hyperparameters."""
         self.config.update(config)
-        
+
         # Log to TensorBoard as text
         config_str = json.dumps(config, indent=2)
         self.tb_writer.add_text("config", config_str, 0)
-        
+
         if self.wandb_run:
             wandb.config.update(config)
-        
+
         if self.mlflow_run:
             mlflow.log_params(config)
-    
+
     def log_hyperparameters(self, hparams: Dict[str, Any], metrics: Dict[str, float]):
         """Log hyperparameters and final metrics (for hyperparameter tuning)."""
         self.tb_writer.add_hparams(hparams, metrics)
-        
+
         if self.wandb_run:
             wandb.config.update(hparams)
             wandb.log(metrics)
-    
+
     def finish(self):
         """Close all tracking sessions."""
         self.tb_writer.close()
-        
+
         if self.wandb_run:
             wandb.finish()
-        
+
         if self.mlflow_run:
             mlflow.end_run()
 
@@ -198,7 +203,9 @@ def create_experiment_config(args) -> Dict[str, Any]:
             "device": str(torch.device("cuda" if torch.cuda.is_available() else "cpu")),
             "seed": args.seed,
             "cuda_available": torch.cuda.is_available(),
-            "cuda_device_count": torch.cuda.device_count() if torch.cuda.is_available() else 0,
+            "cuda_device_count": (
+                torch.cuda.device_count() if torch.cuda.is_available() else 0
+            ),
         },
         # Model
         "model": {
@@ -208,38 +215,65 @@ def create_experiment_config(args) -> Dict[str, Any]:
     }
 
 
-def log_training_metrics(
-    tracker: ExperimentTracker,
-    epoch: int,
-    train_loss: float,
-    val_loss: float,
-    metrics: Dict[str, Dict[str, float]],
-    lr: float,
-):
-    """Log all training metrics in organized structure."""
-    # Losses
-    tracker.log_scalars({
-        "loss/train": train_loss,
-        "loss/val": val_loss,
-    }, step=epoch)
-    
-    # mAP metrics
-    if "bbox" in metrics:
-        tracker.log_scalars({
-            "mAP/bbox_AP": metrics["bbox"].get("AP", 0),
-            "mAP/bbox_AP50": metrics["bbox"].get("AP50", 0),
-            "mAP/bbox_AP75": metrics["bbox"].get("AP75", 0),
-        }, step=epoch)
-    
-    if "segm" in metrics:
-        tracker.log_scalars({
-            "mAP/segm_AP": metrics["segm"].get("AP", 0),
-            "mAP/segm_AP50": metrics["segm"].get("AP50", 0),
-            "mAP/segm_AP75": metrics["segm"].get("AP75", 0),
-        }, step=epoch)
-    
-    # Learning rate
-    tracker.log_scalar("lr", lr, step=epoch)
+def log_training_metrics(tracker: ExperimentTracker, metrics: Dict[str, float]):
+    """
+    Log all training metrics in organized structure.
+
+    Args:
+        tracker: ExperimentTracker instance
+        metrics: Flat dictionary with all metrics (no nesting):
+            - epoch: Current epoch number
+            - val_loss: Validation loss
+            - train_loss_*: Individual training loss components
+            - bbox_*: Bbox AP metrics
+            - segm_*: Segmentation AP metrics
+            - lr_*: Learning rates per parameter group
+    """
+    epoch = int(metrics["epoch"])
+
+    # Separate metrics by prefix for organized logging
+    train_losses = {}
+    bbox_metrics = {}
+    segm_metrics = {}
+    learning_rates = {}
+
+    for key, value in metrics.items():
+        if key.startswith("train_"):
+            loss_name = key.replace("train_", "")
+            train_losses[loss_name] = value
+        elif key.startswith("bbox_"):
+            metric_name = key.replace("bbox_", "")
+            bbox_metrics[metric_name] = value
+        elif key.startswith("segm_"):
+            metric_name = key.replace("segm_", "")
+            segm_metrics[metric_name] = value
+        elif key.startswith("lr_"):
+            lr_name = key.replace("lr_", "")
+            learning_rates[lr_name] = value
+
+    # Log training losses
+    if train_losses:
+        total_train_loss = sum(train_losses.values())
+        tracker.log_scalar("loss/train_total", total_train_loss, step=epoch)
+        for loss_name, loss_value in train_losses.items():
+            tracker.log_scalar(f"loss/train_{loss_name}", loss_value, step=epoch)
+
+    # Log validation loss
+    tracker.log_scalar("loss/val", metrics["val_loss"], step=epoch)
+
+    # Log bbox metrics
+    if bbox_metrics:
+        for metric_name, metric_value in bbox_metrics.items():
+            tracker.log_scalar(f"mAP/bbox_{metric_name}", metric_value, step=epoch)
+
+    # Log segmentation metrics
+    if segm_metrics:
+        for metric_name, metric_value in segm_metrics.items():
+            tracker.log_scalar(f"mAP/segm_{metric_name}", metric_value, step=epoch)
+
+    # Log learning rates
+    for lr_name, lr_value in learning_rates.items():
+        tracker.log_scalar(f"lr/{lr_name}", lr_value, step=epoch)
 
 
 def save_experiment_summary(
@@ -258,18 +292,19 @@ def save_experiment_summary(
         "config": config,
         "best_metrics": best_metrics,
     }
-    
+
     summary_path = output_dir / "experiment_summary.json"
     with open(summary_path, "w") as f:
         json.dump(summary, f, indent=2)
-    
+
     print(f"📝 Experiment summary saved: {summary_path}")
 
 
 # Example usage integration
 if __name__ == "__main__":
     # Example: How to use in main.py
-    print("""
+    print(
+        """
 To integrate into main.py, replace:
 
     writer = SummaryWriter(log_dir=args.logdir)
@@ -298,5 +333,5 @@ With:
     
     # At the end:
     tracker.finish()
-    """)
-
+    """
+    )

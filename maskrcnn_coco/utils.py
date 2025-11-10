@@ -181,6 +181,88 @@ def build_model(num_classes: int) -> torch.nn.Module:
     return model
 
 
+# TODO check LR
+def get_parameter_groups(
+    model: torch.nn.Module,
+    lr: float,
+    box_head_lr_multiplier: float = 10.0,
+    mask_head_lr_multiplier: float = 10.0,
+):
+    """
+    Create parameter groups with differential learning rates for finetuning.
+
+    Args:
+        model: Mask R-CNN model
+        lr: Base learning rate for pretrained backbone
+        head_lr_multiplier: Multiplier for learning rate of new heads (default: 10x)
+
+    Returns:
+        List of parameter groups with different learning rates
+    """
+    # Collect parameters for different parts of the model
+    backbone_params = []
+    box_head_params = []
+    mask_head_params = []
+    other_params = []
+
+    # Separate backbone parameters
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue
+
+        if "backbone" in name:
+            backbone_params.append(param)
+        elif "box_predictor" in name:
+            box_head_params.append(param)
+        elif "mask_predictor" in name:
+            mask_head_params.append(param)
+        else:
+            other_params.append(param)
+
+    # Create parameter groups with different learning rates
+    param_groups = [
+        {"params": backbone_params, "lr": lr, "name": "backbone"},
+        {
+            "params": box_head_params,
+            "lr": lr * box_head_lr_multiplier,
+            "name": "box_head",
+        },
+        {
+            "params": mask_head_params,
+            "lr": lr * mask_head_lr_multiplier,
+            "name": "mask_head",
+        },
+    ]
+
+    # Add other params (RPN, etc.) with intermediate LR
+    if other_params:
+        param_groups.append(
+            {
+                "params": other_params,
+                "lr": lr * 5.0,  # Intermediate LR for RPN
+                "name": "other",
+            }
+        )
+
+    # Log parameter counts
+    print(f"\n📊 Parameter Groups:")
+    print(
+        f"  Backbone: {sum(p.numel() for p in backbone_params):,} params @ lr={lr:.2e}"
+    )
+    print(
+        f"  Box Head: {sum(p.numel() for p in box_head_params):,} params @ lr={lr * box_head_lr_multiplier:.2e}"
+    )
+    print(
+        f"  Mask Head: {sum(p.numel() for p in mask_head_params):,} params @ lr={lr * mask_head_lr_multiplier:.2e}"
+    )
+    if other_params:
+        print(
+            f"  Other (RPN): {sum(p.numel() for p in other_params):,} params @ lr={lr * 5.0:.2e}"
+        )
+
+    return param_groups
+
+
 # ----------------------------
 # Training, validation, evaluation
 # ----------------------------
@@ -229,10 +311,14 @@ def evaluate_coco(
             scores = out["scores"].detach().cpu().numpy()
             labels = out["labels"].detach().cpu().numpy()
 
-            order = scores.argsort()[::-1][:max_dets]
-            boxes, scores, labels = boxes[order], scores[order], labels[order]
+            # Use a positive-stride ordering to avoid negative-stride issues
+            # TODO why are we sorting by negative scores?
+            order_np = np.argsort(-scores)[
+                :max_dets
+            ]  # no [::-1] view => no negative stride
+            boxes, scores, labels = boxes[order_np], scores[order_np], labels[order_np]
 
-            # map contiguous label → original COCO category_id
+            # map contiguous label => original COCO category_id
             labels_coco = [dataset.contig2catid[int(c)] for c in labels]
 
             for b, s, c in zip(boxes, scores, labels_coco):
@@ -246,7 +332,16 @@ def evaluate_coco(
                 )
 
             if "masks" in out and len(out["masks"]) > 0:
-                masks = out["masks"].detach().cpu().numpy()[order, 0] >= mask_thresh
+                # Fix: properly extract masks - shape is [N, 1, H, W], so squeeze the channel dimension
+                # Use torch LongTensor indexing to avoid negative-stride issues from numpy views (TODO why?)
+                order_t = torch.as_tensor(
+                    order_np, dtype=torch.long, device=out["masks"].device
+                )
+                masks_t = out["masks"].detach()[order_t].cpu()  # [N, 1, H, W] on CPU
+                masks = masks_t.numpy()
+                masks = (
+                    masks.squeeze(1) >= mask_thresh
+                )  # Now shape is [N, H, W], boolean (TODO why?)
                 for m, s, c in zip(masks, scores, labels_coco):
                     rle = mask_utils.encode(np.asfortranarray(m.astype(np.uint8)))
                     rle["counts"] = rle["counts"].decode("utf-8")
@@ -283,9 +378,21 @@ def evaluate_coco(
     return {"bbox": bbox, "segm": segm}
 
 
-def train_one_epoch(model, loader, optimizer, device, scaler=None, log_every: int = 50):
+def train_one_epoch(
+    model: torch.nn.Module,
+    loader: torch.utils.data.DataLoader,
+    optimizer: torch.optim.Optimizer,
+    device: torch.device,
+    scaler: torch.cuda.amp.GradScaler | None = None,
+    log_every: int = 50,
+    max_grad_norm: float = 20.0,
+) -> Dict[str, float]:
     model.train()
-    running, seen = 0.0, 0
+
+    # Use a dictionary to track all losses
+    running_losses = {}
+    seen = 0
+
     pbar = tqdm(loader, desc="train", leave=False)
 
     for i, (images, targets) in enumerate(pbar, 1):
@@ -302,6 +409,11 @@ def train_one_epoch(model, loader, optimizer, device, scaler=None, log_every: in
                 loss = sum(loss_dict.values())
             optimizer.zero_grad(set_to_none=True)
             scaler.scale(loss).backward()
+
+            # Gradient clipping (unscale first for accurate clipping)
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+
             scaler.step(optimizer)
             scaler.update()
         else:
@@ -309,16 +421,31 @@ def train_one_epoch(model, loader, optimizer, device, scaler=None, log_every: in
             loss = sum(loss_dict.values())
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
+
+            # Gradient clipping
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+
             optimizer.step()
 
         bs = len(images)
-        running += loss.item() * bs
         seen += bs
 
-        if i % log_every == 0:
-            pbar.set_postfix(loss=running / max(seen, 1))
+        # Update running losses
+        if i == 1:
+            # Initialize the dict on the first batch
+            running_losses = {k: 0.0 for k in loss_dict.keys()}
 
-    return running / max(seen, 1)
+        for k, v in loss_dict.items():
+            running_losses[k] += v.item() * bs
+
+        if i % log_every == 0:
+            # Postfix the *total* loss
+            total_loss_val = sum(running_losses.values())
+            pbar.set_postfix(loss=total_loss_val / max(seen, 1))
+
+    # Return the dictionary of mean losses
+    mean_losses = {k: v / max(seen, 1) for k, v in running_losses.items()}
+    return mean_losses
 
 
 @torch.no_grad()
@@ -394,7 +521,16 @@ def fit(
 
     for ep in range(start_epoch + 1, epochs + 1):
         print(f"\nEpoch {ep}/{epochs}")
-        train_loss = train_one_epoch(model, train_loader, optimizer, device, scaler)
+        train_loss = train_one_epoch(
+            model, train_loader, optimizer, device, scaler, max_grad_norm=10.0
+        )
+
+        # Print individual training losses for debugging
+        print(f"📊 Training Losses:")
+        total = sum(train_loss.values())
+        print(f"   Total: {total:.4f}")
+        for loss_name, loss_value in sorted(train_loss.items()):
+            print(f"   {loss_name}: {loss_value:.4f}")
 
         # Step warmup then cosine
         if ep <= sched_warmup.total_iters:
@@ -405,35 +541,42 @@ def fit(
         val_loss = validate_loss(model, val_loader, device)
         metrics = evaluate_coco(model, val_loader, dataset, device)
 
+        # Print metrics summary
+        print(f"📈 Validation Loss: {val_loss:.4f}")
+        print(
+            f"📦 Box mAP: {metrics['bbox']['AP']:.4f} (AP50: {metrics['bbox']['AP50']:.4f})"
+        )
+        print(
+            f"🎭 Mask mAP: {metrics['segm']['AP']:.4f} (AP50: {metrics['segm']['AP50']:.4f})"
+        )
+
         # Enhanced logging with MLOps tracker or fallback to basic writer
         if tracker is not None:
             # Use enhanced tracker (supports W&B, MLflow, etc.)
-            try:
-                from mlops_modernization import log_training_metrics
+            from mlops_modernization import log_training_metrics
 
-                log_training_metrics(
-                    tracker,
-                    ep,
-                    train_loss,
-                    val_loss,
-                    metrics,
-                    optimizer.param_groups[0]["lr"],
-                )
-            except ImportError:
-                # Fallback to basic logging
-                if writer is not None:
-                    writer.add_scalar("loss/train", train_loss, ep)
-                    writer.add_scalar("loss/val", val_loss, ep)
-                    writer.add_scalar("mAP/bbox", metrics["bbox"]["AP"], ep)
-                    writer.add_scalar("mAP/segm", metrics["segm"]["AP"], ep)
-        elif writer is not None:
-            # Basic TensorBoard logging
-            writer.add_scalar("loss/train", train_loss, ep)
-            writer.add_scalar("loss/val", val_loss, ep)
-            writer.add_scalar("mAP/bbox", metrics["bbox"]["AP"], ep)
-            writer.add_scalar("mAP/segm", metrics["segm"]["AP"], ep)
-            # Also log learning rate
-            writer.add_scalar("lr", optimizer.param_groups[0]["lr"], ep)
+            # TODO clean up
+            # Flatten everything into a single-level dict
+            all_metrics = {"epoch": ep, "val_loss": val_loss}
+
+            # Add train losses with prefix
+            for loss_name, loss_value in train_loss.items():
+                all_metrics[f"train_{loss_name}"] = loss_value
+
+            # Add bbox metrics with prefix
+            for metric_name, metric_value in metrics["bbox"].items():
+                all_metrics[f"bbox_{metric_name}"] = metric_value
+
+            # Add segm metrics with prefix
+            for metric_name, metric_value in metrics["segm"].items():
+                all_metrics[f"segm_{metric_name}"] = metric_value
+
+            # Add learning rates with prefix
+            for i, group in enumerate(optimizer.param_groups):
+                group_name = group.get("name", f"group_{i}")
+                all_metrics[f"lr_{group_name}"] = group["lr"]
+
+            log_training_metrics(tracker, all_metrics)
 
         # Checkpoints
         checkpoint_path = out / f"epoch_{ep:03d}.pth"

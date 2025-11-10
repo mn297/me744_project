@@ -21,6 +21,7 @@ from utils import (
     detection_collate,
     seed_everything,
     build_model,
+    get_parameter_groups,
     fit,
     build_schedulers,
 )
@@ -67,12 +68,24 @@ def parse_args():
     )
 
     # Training
-    p.add_argument("--epochs", type=int, default=50)
+    p.add_argument("--epochs", type=int, default=20)
     p.add_argument("--batch-size", type=int, default=2)
     p.add_argument("--workers", type=int, default=max(2, os.cpu_count() // 2))
     p.add_argument("--lr", type=float, default=5e-3)
     p.add_argument("--weight-decay", type=float, default=5e-4)
     p.add_argument("--momentum", type=float, default=0.9)
+    p.add_argument(
+        "--box-head-lr-multiplier",
+        type=float,
+        default=10.0,
+        help="Learning rate multiplier for box heads (default: 10x)",
+    )
+    p.add_argument(
+        "--mask-head-lr-multiplier",
+        type=float,
+        default=10.0,
+        help="Learning rate multiplier for mask heads (default: 10x)",
+    )
 
     # Output
     p.add_argument("--out", type=str, default="checkpoints")
@@ -171,10 +184,16 @@ def main():
         except Exception as e:
             print(f"torch.compile failed: {e}. Continuing without compile.")
 
-    # Optimizer and Schedulers
-    params = [p for p in model.parameters() if p.requires_grad]
+    # Optimizer and Schedulers with differential learning rates
+    # Backbone uses base LR, heads use higher LR (they're randomly initialized)
+    param_groups = get_parameter_groups(
+        model,
+        lr=args.lr,
+        box_head_lr_multiplier=args.box_head_lr_multiplier,
+        mask_head_lr_multiplier=args.mask_head_lr_multiplier,
+    )
     optimizer = torch.optim.SGD(
-        params, lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay
+        param_groups, momentum=args.momentum, weight_decay=args.weight_decay
     )
 
     cosine_epochs = (

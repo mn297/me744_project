@@ -65,8 +65,8 @@ coco_output = {
 # go through each image
 segmentation_id = 0
 numclasses = [1] # excluding background
-images = sorted(glob.glob(os.path.join(IMAGE_DIR, "*.png"), recursive=True))[4000:]
-gts = sorted(glob.glob(os.path.join(LABEL_DIR, "*.png"), recursive=True))[4000:]
+images = sorted(glob.glob(os.path.join(IMAGE_DIR, "*.png"), recursive=True))[3000:3999]
+gts = sorted(glob.glob(os.path.join(LABEL_DIR, "*.png"), recursive=True))[3000:3999]
 print(len(images))
 print(len(gts))
 for image_id, image_filename in enumerate(images):

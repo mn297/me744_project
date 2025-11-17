@@ -13,6 +13,7 @@ import matplotlib.patches as patches
 from matplotlib.patches import Polygon
 from PIL import Image
 import torchvision.transforms.functional as F
+import os
 
 try:
     import fiftyone as fo
@@ -22,7 +23,7 @@ except ImportError:
     FIFTYONE_AVAILABLE = False
     print("Warning: FiftyOne not available. Install with: pip install fiftyone")
 
-from utils import CocoSegmentationDataset, build_model, detection_collate
+from core import CocoSegmentationDataset, build_model, detection_collate
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -103,7 +104,6 @@ def visualize_predictions_fiftyone(
     pytorch_dataset = CocoSegmentationDataset(
         images_dir,
         annotations_path,
-        is_train=False,
     )
 
     print(f"\nRunning inference on {len(coco_dataset)} images...")
@@ -409,19 +409,30 @@ def visualize_predictions(
         plt.close()
 
 
-import os
-
-
 ROOT = Path(__file__).resolve().parent
+
 DEF = {
     "train_images": ROOT / "Fuji-Apple-Segmentation/trainingset/JPEGImages",
     "train_anno": ROOT / "Fuji-Apple-Segmentation/trainingset/annotations.json",
-    "val_images": ROOT / "Fuji-Apple-Segmentation/testset/JPEGImages",
-    "val_anno": ROOT / "Fuji-Apple-Segmentation/testset/annotations.json",
+    "val_images": ROOT / "Fuji-Apple-Segmentation/trainingset/JPEGImages",
+    "val_anno": ROOT / "Fuji-Apple-Segmentation/trainingset/annotations.json",
+    # "val_images": ROOT / "Fuji-Apple-Segmentation/testset/JPEGImages",
+    # "val_anno": ROOT / "Fuji-Apple-Segmentation/testset/annotations.json",
     "checkpoint": ROOT / "checkpoints/best_bbox_ap.pth",
+    "checkpoint_dir": ROOT / "checkpoints",
     "output_dir": ROOT / "visualizations",
     "dataset_name": "Fuji-Apple-Segmentation",
 }
+
+# DEF = {
+#     "train_images": ROOT / "Car-Parts-Segmentation/trainingset/JPEGImages",
+#     "train_anno": ROOT / "Car-Parts-Segmentation/trainingset/annotations.json",
+#     "val_images": ROOT / "Car-Parts-Segmentation/testset/JPEGImages",
+#     "val_anno": ROOT / "Car-Parts-Segmentation/testset/annotations.json",
+#     "checkpoint": ROOT / "checkpoints/best_bbox_ap.pth",
+#     "output_dir": ROOT / "visualizations",
+#     "dataset_name": "Car-Parts-Segmentation",
+# }
 
 
 def main():
@@ -485,12 +496,10 @@ def main():
     train_ds = CocoSegmentationDataset(
         DEF["train_images"],
         DEF["train_anno"],
-        is_train=True,
     )
     val_ds = CocoSegmentationDataset(
         args.images,
         args.annotations,
-        is_train=False,
         catid2contig=train_ds.catid2contig,
         contig2catid=train_ds.contig2catid,
     )

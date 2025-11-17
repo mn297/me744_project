@@ -176,7 +176,7 @@ def main():
         dataset=val_ds,
         device=device,
         optimizer=optimizer,
-        schedulers=(sched_warmup, sched_cosine),
+        lr_scheduler=(sched_warmup, sched_cosine),
         epochs=args.epochs,
         out_dir=args.out,
         writer=writer,

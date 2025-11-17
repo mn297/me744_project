@@ -214,7 +214,7 @@ fit(
     dataset=val_ds,
     device=device,
     optimizer=optimizer,
-    schedulers=(sched_warmup, sched_cosine),
+    lr_scheduler=(sched_warmup, sched_cosine),
     epochs=EPOCHS,
     out_dir=str(OUT_DIR),
     writer=None,  # set to SummaryWriter if you want TB in notebooks

@@ -16,19 +16,18 @@ import torch
 import torchvision
 from torch.utils.data import DataLoader
 
-from utils import (
+from core import (
     CocoSegmentationDataset,
     detection_collate,
     seed_everything,
     build_model,
     get_parameter_groups,
     fit,
-    build_schedulers,
 )
 
 # Import MLOps module
 try:
-    from mlops_modernization import (
+    from mlops import (
         ExperimentTracker,
         create_experiment_config,
         log_training_metrics,
@@ -42,6 +41,30 @@ except ImportError:
 from torch.utils.tensorboard import SummaryWriter
 
 
+ROOT = Path(__file__).resolve().parent
+
+DEF = {
+    "train_images": ROOT / "Fuji-Apple-Segmentation/trainingset/JPEGImages",
+    "train_anno": ROOT / "Fuji-Apple-Segmentation/trainingset/annotations.json",
+    "val_images": ROOT / "Fuji-Apple-Segmentation/testset/JPEGImages",
+    "val_anno": ROOT / "Fuji-Apple-Segmentation/testset/annotations.json",
+    "checkpoint": ROOT / "checkpoints/best_bbox_ap.pth",
+    "checkpoint_dir": ROOT / "checkpoints",
+    "output_dir": ROOT / "visualizations",
+    "dataset_name": "Fuji-Apple-Segmentation",
+}
+
+# DEF = {
+#     "train_images": ROOT / "Car-Parts-Segmentation/trainingset/JPEGImages",
+#     "train_anno": ROOT / "Car-Parts-Segmentation/trainingset/annotations.json",
+#     "val_images": ROOT / "Car-Parts-Segmentation/testset/JPEGImages",
+#     "val_anno": ROOT / "Car-Parts-Segmentation/testset/annotations.json",
+#     "checkpoint": ROOT / "checkpoints/best_bbox_ap.pth",
+#     "output_dir": ROOT / "visualizations",
+#     "dataset_name": "Car-Parts-Segmentation",
+# }
+
+
 def parse_args():
     p = argparse.ArgumentParser(
         description="Train Mask R-CNN on COCO-format data (MLOps Enhanced)"
@@ -51,27 +74,25 @@ def parse_args():
     p.add_argument(
         "--train-images",
         type=str,
-        default="Fuji-Apple-Segmentation/trainingset/JPEGImages",
+        default=DEF["train_images"],
     )
     p.add_argument(
         "--train-anno",
         type=str,
-        default="Fuji-Apple-Segmentation/trainingset/annotations.json",
+        default=DEF["train_anno"],
     )
-    p.add_argument(
-        "--val-images", type=str, default="Fuji-Apple-Segmentation/testset/JPEGImages"
-    )
+    p.add_argument("--val-images", type=str, default=DEF["val_images"])
     p.add_argument(
         "--val-anno",
         type=str,
-        default="Fuji-Apple-Segmentation/testset/annotations.json",
+        default=DEF["val_anno"],
     )
 
     # Training
-    p.add_argument("--epochs", type=int, default=20)
+    p.add_argument("--epochs", type=int, default=300)
     p.add_argument("--batch-size", type=int, default=2)
-    p.add_argument("--workers", type=int, default=max(2, os.cpu_count() // 2))
-    p.add_argument("--lr", type=float, default=5e-3)
+    p.add_argument("--workers", type=int, default=max(2, os.cpu_count()))
+    p.add_argument("--lr", type=float, default=5e-4)
     p.add_argument("--weight-decay", type=float, default=5e-4)
     p.add_argument("--momentum", type=float, default=0.9)
     p.add_argument(
@@ -88,7 +109,7 @@ def parse_args():
     )
 
     # Output
-    p.add_argument("--out", type=str, default="checkpoints")
+    p.add_argument("--out", type=str, default=DEF["checkpoint_dir"])
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--logdir", type=str, default="runs/maskrcnn")
 
@@ -129,25 +150,36 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
+    from torchvision.transforms import ToTensor
+    from torch.utils.data import DataLoader
+
+    # convert a PIL image to a PyTorch tensor
+    def get_transform():
+        return ToTensor()
 
     # Datasets
     print("\n" + "=" * 80)
     print("LOADING DATASETS")
     print("=" * 80)
     train_ds = CocoSegmentationDataset(
-        args.train_images, args.train_anno, is_train=True
+        args.train_images,
+        args.train_anno,
+        # is_train=True
+        transforms=get_transform(),
     )
     val_ds = CocoSegmentationDataset(
         args.val_images,
         args.val_anno,
-        is_train=False,
-        catid2contig=train_ds.catid2contig,
-        contig2catid=train_ds.contig2catid,
+        # is_train=False,
+        # catid2contig=train_ds.catid2contig,
+        # contig2catid=train_ds.contig2catid,
+        transforms=get_transform(),
     )
 
+    num_classes = len(train_ds.coco.getCatIds()) + 1
     print(f"Training dataset: {len(train_ds):,} images")
     print(f"Validation dataset: {len(val_ds):,} images")
-    print(f"Number of classes: {train_ds.num_classes} (including background)")
+    print(f"Number of classes: {num_classes} (including background)")
 
     # DataLoaders
     pin = device.type == "cuda"
@@ -174,7 +206,6 @@ def main():
     print(f"Validation batches: {len(val_loader):,} (batch_size=1)")
 
     # Model
-    num_classes = train_ds.num_classes
     model = build_model(num_classes)
     model.to(device)
 
@@ -195,14 +226,10 @@ def main():
     optimizer = torch.optim.SGD(
         param_groups, momentum=args.momentum, weight_decay=args.weight_decay
     )
+    # optimizer = torch.optim.AdamW(param_groups, lr=args.lr)
 
-    cosine_epochs = (
-        args.cosine_epochs
-        if args.cosine_epochs > 0
-        else max(args.epochs - args.warmup_epochs, 1)
-    )
-    sched_warmup, sched_cosine = build_schedulers(
-        optimizer, args.warmup_epochs, cosine_epochs
+    lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        optimizer, max_lr=args.lr, total_steps=args.epochs * len(train_loader)
     )
 
     # Resume from checkpoint
@@ -294,7 +321,7 @@ def main():
         dataset=val_ds,
         device=device,
         optimizer=optimizer,
-        schedulers=(sched_warmup, sched_cosine),
+        lr_scheduler=lr_scheduler,
         epochs=args.epochs,
         out_dir=args.out,
         writer=writer,

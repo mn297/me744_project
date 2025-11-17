@@ -3,10 +3,37 @@ Quick script to show how parameter names work in Mask R-CNN
 """
 
 import torch
-from utils import build_model
+from torchvision.models.detection import maskrcnn_resnet50_fpn_v2
+from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
+from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+dtype = torch.float32
 
 # Build a model
-model = build_model(num_classes=2)
+# Initialize a Mask R-CNN model with pretrained weights
+model = maskrcnn_resnet50_fpn_v2(weights='DEFAULT')
+
+# Get the number of input features for the classifier
+in_features_box = model.roi_heads.box_predictor.cls_score.in_features
+in_features_mask = model.roi_heads.mask_predictor.conv5_mask.in_channels
+
+# Get the numbner of output channels for the Mask Predictor
+dim_reduced = model.roi_heads.mask_predictor.conv5_mask.out_channels
+
+# # Replace the box predictor
+# model.roi_heads.box_predictor = FastRCNNPredictor(in_channels=in_features_box, num_classes=len(class_names))
+
+# # Replace the mask predictor
+# model.roi_heads.mask_predictor = MaskRCNNPredictor(in_channels=in_features_mask, dim_reduced=dim_reduced, num_classes=len(class_names))
+
+# Set the model's device and data type
+model.to(device=device, dtype=dtype);
+
+# Add attributes to store the device and model name for later reference
+model.device = device
+model.name = 'maskrcnn_resnet50_fpn_v2'
+
 
 print("=" * 80)
 print("MASK R-CNN PARAMETER NAMES (showing first few from each component)")

@@ -60,6 +60,7 @@ DEF = {
 #     "val_images": ROOT / "Car-Parts-Segmentation/testset/JPEGImages",
 #     "val_anno": ROOT / "Car-Parts-Segmentation/testset/annotations.json",
 #     "checkpoint": ROOT / "checkpoints/best_bbox_ap.pth",
+#     "checkpoint_dir": ROOT / "checkpoints",
 #     "output_dir": ROOT / "visualizations",
 #     "dataset_name": "Car-Parts-Segmentation",
 # }
@@ -92,9 +93,9 @@ def parse_args():
     p.add_argument("--epochs", type=int, default=300)
     p.add_argument("--batch-size", type=int, default=2)
     p.add_argument("--workers", type=int, default=max(2, os.cpu_count()))
-    p.add_argument("--lr", type=float, default=5e-4)
-    p.add_argument("--weight-decay", type=float, default=5e-4)
+    p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--momentum", type=float, default=0.9)
+    p.add_argument("--weight-decay", type=float, default=1e-4)
     p.add_argument(
         "--box-head-lr-multiplier",
         type=float,
@@ -228,9 +229,9 @@ def main():
     )
     # optimizer = torch.optim.AdamW(param_groups, lr=args.lr)
 
-    lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(
-        optimizer, max_lr=args.lr, total_steps=args.epochs * len(train_loader)
-    )
+    # lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(
+    #     optimizer, max_lr=args.lr, total_steps=args.epochs * len(train_loader)
+    # )
 
     # Resume from checkpoint
     start_epoch = 0
@@ -321,7 +322,7 @@ def main():
         dataset=val_ds,
         device=device,
         optimizer=optimizer,
-        lr_scheduler=lr_scheduler,
+        # lr_scheduler=lr_scheduler,
         epochs=args.epochs,
         out_dir=args.out,
         writer=writer,

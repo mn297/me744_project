@@ -424,15 +424,15 @@ DEF = {
     "dataset_name": "Fuji-Apple-Segmentation",
 }
 
-# DEF = {
-#     "train_images": ROOT / "Car-Parts-Segmentation/trainingset/JPEGImages",
-#     "train_anno": ROOT / "Car-Parts-Segmentation/trainingset/annotations.json",
-#     "val_images": ROOT / "Car-Parts-Segmentation/testset/JPEGImages",
-#     "val_anno": ROOT / "Car-Parts-Segmentation/testset/annotations.json",
-#     "checkpoint": ROOT / "checkpoints/best_bbox_ap.pth",
-#     "output_dir": ROOT / "visualizations",
-#     "dataset_name": "Car-Parts-Segmentation",
-# }
+DEF = {
+    "train_images": ROOT / "Car-Parts-Segmentation/trainingset/JPEGImages",
+    "train_anno": ROOT / "Car-Parts-Segmentation/trainingset/annotations.json",
+    "val_images": ROOT / "Car-Parts-Segmentation/testset/JPEGImages",
+    "val_anno": ROOT / "Car-Parts-Segmentation/testset/annotations.json",
+    "checkpoint": ROOT / "checkpoints/best_bbox_ap.pth",
+    "output_dir": ROOT / "visualizations",
+    "dataset_name": "Car-Parts-Segmentation",
+}
 
 
 def main():

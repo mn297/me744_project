@@ -121,6 +121,9 @@ class CocoSegmentationDataset(Dataset):
                 print(f"This is likely due to a problem in your annotations.json file.")
                 print(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
             # -------------------------------------
+            print("len(masks):", len(masks))
+            print("masks_array.shape:", masks_array.shape)
+            print("masks_array[0].shape:", masks_array[0].shape)
         else:
             # Empty masks - get image size for correct shape
             img_info = self.coco.loadImgs(image_id)[0]
@@ -276,7 +279,11 @@ def build_model(num_classes: int) -> torch.nn.Module:
     in_features_box = model.roi_heads.box_predictor.cls_score.in_features
     in_features_mask = model.roi_heads.mask_predictor.conv5_mask.in_channels
     # Get the numbner of output channels for the Mask Predictor
-    dim_reduced = model.roi_heads.mask_predictor.conv5_mask.out_channels
+    # dim_reduced = model.roi_heads.mask_predictor.conv5_mask.out_channels
+    dim_reduced = 512
+    print(f"In features box: {in_features_box}")
+    print(f"In features mask: {in_features_mask}")
+    print(f"Dim reduced: {dim_reduced}")
 
     # Replace the box predictor
     model.roi_heads.box_predictor = FastRCNNPredictor(
@@ -292,8 +299,8 @@ def build_model(num_classes: int) -> torch.nn.Module:
 
     # Freeze the backbone parameters
     for param in model.backbone.parameters():
-        param.requires_grad = False
-        # param.requires_grad = True
+        # param.requires_grad = False
+        param.requires_grad = True
 
     model.name = "maskrcnn_resnet50_fpn_v2"
     print(f"Model: {model.name}")
@@ -506,8 +513,8 @@ def train_one_epoch(
     model: torch.nn.Module,
     optimizer: torch.optim.Optimizer,
     loader: torch.utils.data.DataLoader,
-    lr_scheduler: torch.optim.lr_scheduler.LRScheduler,
-    device: torch.device,
+    lr_scheduler: torch.optim.lr_scheduler.LRScheduler = None,
+    device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
     scaler: torch.cuda.amp.GradScaler | None = None,
     log_every: int = 50,
     max_grad_norm: float = 20.0,
@@ -551,7 +558,8 @@ def train_one_epoch(
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
 
             optimizer.step()
-            lr_scheduler.step()
+            if lr_scheduler is not None:
+                lr_scheduler.step()
 
         bs = len(images)
         seen += bs
@@ -608,9 +616,9 @@ def fit(
     dataset,
     device,
     optimizer,
-    lr_scheduler,
     epochs: int,
     out_dir: str,
+    lr_scheduler: torch.optim.lr_scheduler.LRScheduler = None,
     writer=None,
     use_amp: bool = True,
     use_bf16: bool = False,

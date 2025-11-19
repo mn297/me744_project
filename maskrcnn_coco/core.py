@@ -279,11 +279,8 @@ def build_model(num_classes: int) -> torch.nn.Module:
     in_features_box = model.roi_heads.box_predictor.cls_score.in_features
     in_features_mask = model.roi_heads.mask_predictor.conv5_mask.in_channels
     # Get the numbner of output channels for the Mask Predictor
-    # dim_reduced = model.roi_heads.mask_predictor.conv5_mask.out_channels
-    dim_reduced = 512
-    print(f"In features box: {in_features_box}")
-    print(f"In features mask: {in_features_mask}")
-    print(f"Dim reduced: {dim_reduced}")
+    dim_reduced = model.roi_heads.mask_predictor.conv5_mask.out_channels
+    # dim_reduced = 512
 
     # Replace the box predictor
     model.roi_heads.box_predictor = FastRCNNPredictor(

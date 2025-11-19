@@ -307,14 +307,11 @@ def visualize_predictions(
             ax1.add_patch(rect)
 
             # Add mask to combined overlay
-            mask_binary = mask.astype(bool)
-            color = np.array(plt.cm.tab20(i % 20)[:3]) * 255
-            for c in range(3):
-                gt_overlay[:, :, c] = np.where(
-                    mask_binary,
-                    gt_overlay[:, :, c] * 0.6 + color[c] * 0.4,  # Blend with color
-                    gt_overlay[:, :, c],
-                )
+            mask_binary = np.squeeze(mask).astype(bool)
+            color = np.array([0, 255, 0])  # Bright green for GT masks
+            gt_overlay[mask_binary] = (
+                gt_overlay[mask_binary] * 0.5 + color * 0.5
+            )
 
             # Add label
             ax1.text(
@@ -328,7 +325,7 @@ def visualize_predictions(
 
         # Draw combined overlay once
         if len(gt_masks) > 0:
-            ax1.imshow(gt_overlay.astype(np.uint8), alpha=0.7)
+            ax1.imshow(gt_overlay.astype(np.uint8), alpha=1.0)
 
         # Right: Predictions
         ax2 = axes[1]
@@ -362,14 +359,11 @@ def visualize_predictions(
             ax2.add_patch(rect)
 
             # Add mask to combined overlay
-            mask_binary = mask[0].astype(bool)
-            color = np.array(plt.cm.tab20(i % 20)[:3]) * 255
-            for c in range(3):
-                pred_overlay[:, :, c] = np.where(
-                    mask_binary,
-                    pred_overlay[:, :, c] * 0.6 + color[c] * 0.4,  # Blend with color
-                    pred_overlay[:, :, c],
-                )
+            mask_binary = np.squeeze(mask).astype(bool)
+            color = np.array([255, 105, 180])  # Bright pink for prediction masks
+            pred_overlay[mask_binary] = (
+                pred_overlay[mask_binary] * 0.5 + color * 0.5
+            )
 
             # Add label with score
             ax2.text(
@@ -383,7 +377,7 @@ def visualize_predictions(
 
         # Draw combined overlay once
         if len(masks) > 0:
-            ax2.imshow(pred_overlay.astype(np.uint8), alpha=0.7)
+            ax2.imshow(pred_overlay.astype(np.uint8), alpha=1.0)
 
         # Add statistics
         stats_text = (
@@ -424,15 +418,15 @@ DEF = {
     "dataset_name": "Fuji-Apple-Segmentation",
 }
 
-DEF = {
-    "train_images": ROOT / "Car-Parts-Segmentation/trainingset/JPEGImages",
-    "train_anno": ROOT / "Car-Parts-Segmentation/trainingset/annotations.json",
-    "val_images": ROOT / "Car-Parts-Segmentation/testset/JPEGImages",
-    "val_anno": ROOT / "Car-Parts-Segmentation/testset/annotations.json",
-    "checkpoint": ROOT / "checkpoints/best_bbox_ap.pth",
-    "output_dir": ROOT / "visualizations",
-    "dataset_name": "Car-Parts-Segmentation",
-}
+# DEF = {
+#     "train_images": ROOT / "Car-Parts-Segmentation/trainingset/JPEGImages",
+#     "train_anno": ROOT / "Car-Parts-Segmentation/trainingset/annotations.json",
+#     "val_images": ROOT / "Car-Parts-Segmentation/testset/JPEGImages",
+#     "val_anno": ROOT / "Car-Parts-Segmentation/testset/annotations.json",
+#     "checkpoint": ROOT / "checkpoints/best_bbox_ap.pth",
+#     "output_dir": ROOT / "visualizations",
+#     "dataset_name": "Car-Parts-Segmentation",
+# }
 
 
 def main():

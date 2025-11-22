@@ -157,14 +157,39 @@ def visualize_predictions_fiftyone(
 
             # Handle mask shape - FiftyOne expects 2D boolean array
             mask_2d = mask[0] if len(mask.shape) == 3 else mask
-            mask_bool = mask_2d.astype(bool)
+            full_mask_bool = mask_2d.astype(bool)
 
-            # Create detection with mask
+            # FiftyOne expects an *instance mask* (cropped to the object's bounding box),
+            # but the model outputs a *full-image mask*. We need to convert it.
+
+            # 1. First, we need to resize the full-image mask from the model's output
+            #    resolution to the original image's resolution.
+            # Convert to tensor for resizing
+            mask_tensor = torch.from_numpy(full_mask_bool.astype(np.float32)).unsqueeze(
+                0
+            )  # Shape: [1, H, W]
+            # Resize tensor to original image dimensions (NEAREST interpolation)
+            resized_mask_tensor = F.resize(
+                mask_tensor,
+                [img_height, img_width],
+                interpolation=F.InterpolationMode.NEAREST,
+            )
+            resized_full_mask = resized_mask_tensor.squeeze(0).numpy().astype(bool)
+
+            # 2. Now, crop the resized full-image mask to the bounding box to create
+            #    the instance mask that FiftyOne expects.
+            x1, y1, x2, y2 = box.astype(int)
+            instance_mask = resized_full_mask[y1:y2, x1:x2]
+            
+            # legacy mistake mask
+            # mask_bool = mask_2d.astype(bool)
+
+            # Create detection with the instance mask
             detection = fo.Detection(
                 label=cat_name,
                 bounding_box=[x_norm, y_norm, w_norm, h_norm],
                 confidence=float(score),
-                mask=mask_bool,
+                mask=instance_mask,
             )
             detections.append(detection)
 
@@ -309,9 +334,7 @@ def visualize_predictions(
             # Add mask to combined overlay
             mask_binary = np.squeeze(mask).astype(bool)
             color = np.array([0, 255, 0])  # Bright green for GT masks
-            gt_overlay[mask_binary] = (
-                gt_overlay[mask_binary] * 0.5 + color * 0.5
-            )
+            gt_overlay[mask_binary] = gt_overlay[mask_binary] * 0.5 + color * 0.5
 
             # Add label
             ax1.text(
@@ -361,9 +384,7 @@ def visualize_predictions(
             # Add mask to combined overlay
             mask_binary = np.squeeze(mask).astype(bool)
             color = np.array([255, 105, 180])  # Bright pink for prediction masks
-            pred_overlay[mask_binary] = (
-                pred_overlay[mask_binary] * 0.5 + color * 0.5
-            )
+            pred_overlay[mask_binary] = pred_overlay[mask_binary] * 0.5 + color * 0.5
 
             # Add label with score
             ax2.text(

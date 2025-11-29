@@ -44,10 +44,10 @@ from torch.utils.tensorboard import SummaryWriter
 ROOT = Path(__file__).resolve().parent
 
 DEF = {
-    "train_images": ROOT / "Fuji-Apple-Segmentation/trainingset/JPEGImages",
-    "train_anno": ROOT / "Fuji-Apple-Segmentation/trainingset/annotations.json",
-    "val_images": ROOT / "Fuji-Apple-Segmentation/testset/JPEGImages",
-    "val_anno": ROOT / "Fuji-Apple-Segmentation/testset/annotations.json",
+    "train_images": ROOT / "Fuji-Apple-Segmentation_coco/trainingset/JPEGImages",
+    "train_anno": ROOT / "Fuji-Apple-Segmentation_coco/trainingset/annotations.json",
+    "val_images": ROOT / "Fuji-Apple-Segmentation_coco/testset/JPEGImages",
+    "val_anno": ROOT / "Fuji-Apple-Segmentation_coco/testset/annotations.json",
     "checkpoint": ROOT / "checkpoints/best_bbox_ap.pth",
     "checkpoint_dir": ROOT / "checkpoints",
     "output_dir": ROOT / "visualizations",

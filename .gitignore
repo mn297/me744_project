@@ -30,3 +30,5 @@ site-packages
 runs/
 checkpoints/
 checkpoints_*/
+
+wandb/

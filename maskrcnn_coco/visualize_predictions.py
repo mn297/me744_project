@@ -180,7 +180,7 @@ def visualize_predictions_fiftyone(
             #    the instance mask that FiftyOne expects.
             x1, y1, x2, y2 = box.astype(int)
             instance_mask = resized_full_mask[y1:y2, x1:x2]
-            
+
             # legacy mistake mask
             # mask_bool = mask_2d.astype(bool)
 
@@ -427,12 +427,10 @@ def visualize_predictions(
 ROOT = Path(__file__).resolve().parent
 
 DEF = {
-    "train_images": ROOT / "Fuji-Apple-Segmentation/trainingset/JPEGImages",
-    "train_anno": ROOT / "Fuji-Apple-Segmentation/trainingset/annotations.json",
-    "val_images": ROOT / "Fuji-Apple-Segmentation/trainingset/JPEGImages",
-    "val_anno": ROOT / "Fuji-Apple-Segmentation/trainingset/annotations.json",
-    # "val_images": ROOT / "Fuji-Apple-Segmentation/testset/JPEGImages",
-    # "val_anno": ROOT / "Fuji-Apple-Segmentation/testset/annotations.json",
+    "train_images": ROOT / "Fuji-Apple-Segmentation_coco/trainingset/JPEGImages",
+    "train_anno": ROOT / "Fuji-Apple-Segmentation_coco/trainingset/annotations.json",
+    "val_images": ROOT / "Fuji-Apple-Segmentation_coco/testset/JPEGImages",
+    "val_anno": ROOT / "Fuji-Apple-Segmentation_coco/testset/annotations.json",
     "checkpoint": ROOT / "checkpoints/best_bbox_ap.pth",
     "checkpoint_dir": ROOT / "checkpoints",
     "output_dir": ROOT / "visualizations",

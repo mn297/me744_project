@@ -1,41 +1,53 @@
-from ultralytics import YOLO
+from pathlib import Path
 import os
 import random
 
-# Load a pretrained YOLOv8 segmentation model
-model = YOLO("yolo11s-seg.pt")
+from ultralytics import YOLO
 
-# Define the path to the dataset YAML file
-dataset_yaml = "Fuji-Apple-Segmentation_yolo/dataset.yaml"
 
-# Train the model on the Fuji Apple dataset
-# Note: You might want to adjust epochs, imgsz, etc. for your specific needs.
-results = model.train(
-    data=dataset_yaml,
-    epochs=2,  # Example: fine-tune for 50 epochs
-    imgsz=640,
-    device=0,  # Use GPU 0
-    name="yolov8m-seg-fuji-apple",  # Custom name for the training run
-)
+def run_prediction(model: YOLO, val_dir: Path) -> None:
+    """Run a quick prediction on a random validation image if available."""
+    if not val_dir.exists():
+        print(f"Validation directory not found at: {val_dir}")
+        print("Skipping prediction on a test image.")
+        return
 
-# Validate the model
-print("Validation metrics:")
-metrics = model.val()
+    # 10 random images
+    test_image_names = random.sample(os.listdir(val_dir), 10)
+    for test_image_name in test_image_names:
+        test_image_path = val_dir / test_image_name
+        print(f"\nRunning prediction on a random test image: {test_image_path}")
+        model.predict(str(test_image_path), conf=0.5, save=True)
+        print(
+            "\nPrediction results saved. Check the latest 'runs/segment/predict' dir."
+        )
 
-# --- Run inference on a random test image ---
-# Find a random image from the validation set to test prediction
-val_dir = "Fuji-Apple-Segmentation_yolo/images/val"
-if os.path.exists(val_dir):
-    test_image_name = random.choice(os.listdir(val_dir))
-    test_image_path = os.path.join(val_dir, test_image_name)
 
-    print(f"\nRunning prediction on a random test image: {test_image_path}")
-    predictions = model.predict(test_image_path, conf=0.5, save=True)
+def main() -> None:
+    """Train, validate, and briefly test a YOLOv8 segmentation model."""
+    model = YOLO("yolo11s-seg.pt")
+    dataset_yaml = Path("image_envy_5000_yolo/dataset.yaml")
+    val_dir = Path("image_envy_5000_yolo/images/val")
 
-    # The results with plotted masks will be saved in the 'runs/segment/predict' directory
-    print(f"\nPrediction results saved. Check the latest directory in 'runs/segment/predict'.")
-    print("Each prediction contains bounding boxes, masks, and class probabilities.")
+    results = model.train(
+        data=str(dataset_yaml),
+        epochs=5,
+        imgsz=1024,
+        device=0,
+        # name="yolov8m-seg-fuji-apple",
+    )
+    print("Training complete:", results)
 
-else:
-    print(f"Validation directory not found at: {val_dir}")
-    print("Skipping prediction on a test image.")
+    print("Validation metrics:")
+    metrics = model.val()
+    print(metrics)
+
+    run_prediction(model, val_dir)
+
+
+if __name__ == "__main__":
+    # Required on Windows so torch Dataloaders can spawn workers safely.
+    from multiprocessing import freeze_support
+
+    freeze_support()
+    main()

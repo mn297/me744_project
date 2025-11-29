@@ -214,8 +214,10 @@ def main():
     """Main conversion function."""
     # Paths
     base_dir = Path(__file__).parent.parent
-    fuji_dir = base_dir / "Fuji-SfM_dataset" / "1-Mask-set"
-    output_base = base_dir / "Fuji-Apple-Segmentation"  # Next to Car-Parts-Segmentation
+    fuji_dir = base_dir / "datasets" / "Fuji-SfM_dataset" / "1-Mask-set"
+    output_base = (
+        base_dir / "datasets" / "Fuji-Apple-Segmentation_coco"
+    )  # Next to Car-Parts-Segmentation
 
     # Source directories
     train_source = fuji_dir / "training_images_and_annotations"
@@ -259,10 +261,10 @@ def main():
 
     print("✅ Dataset is now COCO-compliant!")
     print(f"\nYou can now use it with:")
-    print(f"  --train-images Fuji-Apple-Segmentation/trainingset/JPEGImages")
-    print(f"  --train-anno Fuji-Apple-Segmentation/trainingset/annotations.json")
-    print(f"  --val-images Fuji-Apple-Segmentation/testset/JPEGImages")
-    print(f"  --val-anno Fuji-Apple-Segmentation/testset/annotations.json")
+    print(f"  --train-images Fuji-Apple-Segmentation_coco/trainingset/JPEGImages")
+    print(f"  --train-anno Fuji-Apple-Segmentation_coco/trainingset/annotations.json")
+    print(f"  --val-images Fuji-Apple-Segmentation_coco/testset/JPEGImages")
+    print(f"  --val-anno Fuji-Apple-Segmentation_coco/testset/annotations.json")
 
 
 if __name__ == "__main__":

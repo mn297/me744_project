@@ -1,5 +1,0 @@
-path: /home/john/me744_project/maskrcnn_coco/Fuji-Apple-Segmentation_yolo
-train: images/train
-val: images/val
-names:
-  0: apple

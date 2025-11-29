@@ -1,45 +1,66 @@
+from pathlib import Path
 from PIL import Image
 import numpy as np
-import os
-import glob
 import shutil
+from tqdm import tqdm
 
 # https://patrickwasp.com/create-your-own-coco-style-dataset/?utm_source=chatgpt.com
 # https://github.com/waspinator/pycococreator/blob/114df401e5310c602178b31a48d3bb4cef876258/pycococreatortools/pycococreatortools.py#L25
 
-# the folders containing the images / labels
-IMAGE_DIR = "/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/img"
-LABEL_DIR = "/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/gt"
-# the folders to save the numpy arrays (train and evaluation)
-NP_SEGDIR_TRAIN_VAL = "/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/np_segs_train_val"
-NP_IMGDIR_TRAIN_VAL = "/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/np_imgs_train_val"
-# the folders to save the numpy arrays (test)
-NP_SEGDIR_TEST = "/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/np_segs_test"
-NP_IMGDIR_TEST = "/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/np_imgs_test"
+BASE_DIR = Path(__file__).parent
 
+# the folders containing the images / labels
+IMAGE_DIR = BASE_DIR / "datasets" / "image_envy_5000_before_unet" / "img"
+LABEL_DIR = BASE_DIR / "datasets" / "image_envy_5000_before_unet" / "gt"
+# intermediate folder for all samples before splitting
+NP_SEGDIR_ALL = BASE_DIR / "datasets" / "image_envy_5000_unet" / "np_segs_all"
+NP_IMGDIR_ALL = BASE_DIR / "datasets" / "image_envy_5000_unet" / "np_imgs_all"
+
+# final split folders
+NP_SEGDIR_TRAIN = BASE_DIR / "datasets" / "image_envy_5000_unet" / "np_segs_train"
+NP_IMGDIR_TRAIN = BASE_DIR / "datasets" / "image_envy_5000_unet" / "np_imgs_train"
+NP_SEGDIR_VAL = BASE_DIR / "datasets" / "image_envy_5000_unet" / "np_segs_val"
+NP_IMGDIR_VAL = BASE_DIR / "datasets" / "image_envy_5000_unet" / "np_imgs_val"
+
+for path in (
+    NP_SEGDIR_ALL,
+    NP_IMGDIR_ALL,
+    NP_SEGDIR_TRAIN,
+    NP_IMGDIR_TRAIN,
+    NP_SEGDIR_VAL,
+    NP_IMGDIR_VAL,
+):
+    path.mkdir(parents=True, exist_ok=True)
 
 
 colors = [
-[[255, 0, 0],[255, 1, 1]],
-[[255, 255, 0],[255, 255, 1]],
-[[0, 255, 0],[1, 255, 1]]
+    [[255, 0, 0], [255, 1, 1]],
+    [[255, 255, 0], [255, 255, 1]],
+    [[0, 255, 0], [1, 255, 1]],
 ]
 
 # go through each image
-segmentation_id = 0
-numclasses = len(colors) # excluding background
-images = sorted(glob.glob(os.path.join(IMAGE_DIR, "*.png"), recursive=True))
-gts = sorted(glob.glob(os.path.join(LABEL_DIR, "*.png"), recursive=True))
-print(len(gts))
-for g, (gt, im) in enumerate(zip(gts, images)):
-    assert gt.split("/")[-1].split("_")[0] == im.split("/")[-1].split("_")[0]
-    print(gt.split("/")[-1].split("_")[0])
-    annot = np.asarray(Image.open(gt))
-    assert np.all(annot[:,:,3]==255)
-    annot = annot[:,:,:3] # ignore alpha
-    im_cur = np.asarray(Image.open(im))
-    assert np.all(im_cur[:,:,3]==255)
-    im_cur = im_cur[:,:,:3] # ignore alpha
+numclasses = len(colors)  # excluding background
+images = sorted(IMAGE_DIR.glob("*.png"))
+gts = sorted(LABEL_DIR.glob("*.png"))
+print(f"Found {len(gts)} label files and {len(images)} image files.")
+
+if len(images) != len(gts):
+    raise ValueError("Mismatched image/label counts; cannot pair files reliably.")
+
+for gt_path, im_path in tqdm(
+    zip(gts, images), total=len(images), desc="Converting image/label pairs"
+):
+    gt_key = gt_path.stem.split("_")[0]
+    im_key = im_path.stem.split("_")[0]
+    assert gt_key == im_key, f"Label/image mismatch: {gt_path.name} vs {im_path.name}"
+
+    annot = np.asarray(Image.open(gt_path))
+    assert np.all(annot[:, :, 3] == 255)
+    annot = annot[:, :, :3]  # ignore alpha
+    im_cur = np.asarray(Image.open(im_path))
+    assert np.all(im_cur[:, :, 3] == 255)
+    im_cur = im_cur[:, :, :3]  # ignore alpha
     # all_labels = np.unique(annot.reshape(annot.shape[0] * annot.shape[1], 3), axis=0, return_counts=True)
     # print(annotation_filename)
     # print(annot.shape)
@@ -52,15 +73,18 @@ for g, (gt, im) in enumerate(zip(gts, images)):
         for col in colors_cur:
             matches.append(np.all(annot == col, axis=-1))
         masks.append(np.logical_or.reduce(matches))
-    masks = np.stack(masks,axis=0).astype(np.uint8)
+    masks = np.stack(masks, axis=0).astype(np.uint8)
     assert np.max(np.sum(masks, axis=0)) == 1
 
     label_map = np.zeros((annot.shape[0], annot.shape[1]), dtype=np.uint8)
     for cur_label in range(masks.shape[0]):
         label_map += masks[cur_label] * (cur_label + 1)
-    
-    np.save(os.path.join(NP_SEGDIR_TRAIN_VAL, gt.split("/")[-1].replace(".png",".npy")), label_map.astype(np.uint8))
-    np.save(os.path.join(NP_IMGDIR_TRAIN_VAL, im.split("/")[-1].replace(".png",".npy")), im_cur)
+
+    seg_out = NP_SEGDIR_ALL / f"{im_path.stem}.npy"
+    img_out = NP_IMGDIR_ALL / f"{im_path.stem}.npy"
+
+    np.save(seg_out, label_map.astype(np.uint8))
+    np.save(img_out, im_cur)
     # print(np.asarray(Image.open(im)).shape)
 
     # label_map[label_map==3] = 254
@@ -71,12 +95,29 @@ for g, (gt, im) in enumerate(zip(gts, images)):
     # print(annot[0,0])
 
 
-images_tv = sorted(glob.glob(os.path.join(NP_SEGDIR_TRAIN_VAL, "*.npy"), recursive=True))
-gts_tv = sorted(glob.glob(os.path.join(NP_IMGDIR_TRAIN_VAL, "*.npy"), recursive=True))
+all_seg_paths = sorted(NP_SEGDIR_ALL.glob("*.npy"))
+all_img_paths = sorted(NP_IMGDIR_ALL.glob("*.npy"))
 
-# move the last 1000 to test set
-for g, (gt, im) in enumerate(zip(images_tv[-1000:], gts_tv[-1000:])):
-    shutil.move(gt, os.path.join(NP_SEGDIR_TEST, gt.split("/")[-1]))
-    shutil.move(im, os.path.join(NP_IMGDIR_TEST, im.split("/")[-1]))
+if len(all_seg_paths) != len(all_img_paths):
+    raise ValueError("Mismatch between saved segmentation and image counts.")
+
+train_cutoff = min(900, len(all_seg_paths))
+train_seg = all_seg_paths[:train_cutoff]
+train_img = all_img_paths[:train_cutoff]
+val_seg = all_seg_paths[train_cutoff:]
+val_img = all_img_paths[train_cutoff:]
 
 
+# move the pairs to the destination folders
+def move_pairs(seg_list, img_list, seg_dest, img_dest, desc):
+    for seg_path, img_path in tqdm(
+        zip(seg_list, img_list),
+        total=len(seg_list),
+        desc=desc,
+    ):
+        shutil.move(seg_path, seg_dest / seg_path.name)
+        shutil.move(img_path, img_dest / img_path.name)
+
+
+move_pairs(train_seg, train_img, NP_SEGDIR_TRAIN, NP_IMGDIR_TRAIN, "Moving train split")
+move_pairs(val_seg, val_img, NP_SEGDIR_VAL, NP_IMGDIR_VAL, "Moving val split")

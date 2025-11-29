@@ -71,7 +71,7 @@ class ExperimentTracker:
         # TensorBoard (always available)
         log_path = Path(log_dir) / self.run_name
         self.tb_writer = SummaryWriter(log_dir=str(log_path))
-        print(f"📊 TensorBoard logs: {log_path}")
+        print(f"[INFO] TensorBoard logs: {log_path}")
         print(f"   View with: tensorboard --logdir {log_dir}")
 
         # Weights & Biases
@@ -84,9 +84,9 @@ class ExperimentTracker:
                 tags=self.tags,
             )
             self.wandb_run = wandb.run
-            print(f"🔮 Weights & Biases: {wandb.run.url}")
+            print(f"[INFO] Weights & Biases: {wandb.run.url}")
         elif use_wandb and not WANDB_AVAILABLE:
-            print("⚠️  W&B requested but not installed. Install with: pip install wandb")
+            print("[WARNING] W&B requested but not installed. Install with: pip install wandb")
 
         # MLflow
         self.mlflow_run = None
@@ -95,10 +95,10 @@ class ExperimentTracker:
             self.mlflow_run = mlflow.start_run(run_name=self.run_name)
             if self.config:
                 mlflow.log_params(self.config)
-            print(f"📦 MLflow run: {self.mlflow_run.info.run_id}")
+            print(f"[INFO] MLflow run: {self.mlflow_run.info.run_id}")
         elif use_mlflow and not MLFLOW_AVAILABLE:
             print(
-                "⚠️  MLflow requested but not installed. Install with: pip install mlflow"
+                "[WARNING] MLflow requested but not installed. Install with: pip install mlflow"
             )
 
     def log_scalar(self, key: str, value: float, step: int):
@@ -297,7 +297,7 @@ def save_experiment_summary(
     with open(summary_path, "w") as f:
         json.dump(summary, f, indent=2)
 
-    print(f"📝 Experiment summary saved: {summary_path}")
+    print(f"[INFO] Experiment summary saved: {summary_path}")
 
 
 # Example usage integration

@@ -373,7 +373,7 @@ def get_parameter_groups(
         )
 
     # Log parameter counts
-    print(f"\n📊 Parameter Groups:")
+    print(f"\n[INFO] Parameter Groups:")
     print(
         f"  Backbone: {sum(p.numel() for p in backbone_params):,} params @ lr={lr:.2e}"
     )
@@ -649,7 +649,7 @@ def fit(
             max_grad_norm=10.0,
         )
 
-        print(f"📊 Training Losses:")
+        print(f"[INFO] Training Losses:")
         total = sum(train_loss.values())
         print(f"   Total: {total:.4f}")
         for loss_name, loss_value in sorted(train_loss.items()):
@@ -659,12 +659,12 @@ def fit(
         metrics = evaluate_coco(model, val_loader, val_loader.dataset, device)
 
         # Print metrics summary
-        print(f"📈 Validation Loss: {val_loss:.4f}")
+        print(f"[INFO] Validation Loss: {val_loss:.4f}")
         print(
-            f"📦 Box mAP: {metrics['bbox']['AP']:.4f} (AP50: {metrics['bbox']['AP50']:.4f})"
+            f"[INFO] Box mAP: {metrics['bbox']['AP']:.4f} (AP50: {metrics['bbox']['AP50']:.4f})"
         )
         print(
-            f"🎭 Mask mAP: {metrics['segm']['AP']:.4f} (AP50: {metrics['segm']['AP50']:.4f})"
+            f"[INFO] Mask mAP: {metrics['segm']['AP']:.4f} (AP50: {metrics['segm']['AP50']:.4f})"
         )
 
         if tracker is not None:
@@ -702,7 +702,7 @@ def fit(
             },
             checkpoint_path,
         )
-        print(f"💾 Saved checkpoint: {checkpoint_path}")
+        print(f"[SAVED] Saved checkpoint: {checkpoint_path}")
 
         # Track best by bbox AP
         curr_ap = metrics["bbox"]["AP"]
@@ -711,7 +711,7 @@ def fit(
             epochs_no_improve = 0
             best_path = out / "best_bbox_ap.pth"
             torch.save(model.state_dict(), best_path)
-            print(f"🏆 Saved new best model: {best_path} (bbox AP: {best_bbox_ap:.4f})")
+            print(f"[BEST] Saved new best model: {best_path} (bbox AP: {best_bbox_ap:.4f})")
         else:
             epochs_no_improve += 1
 

@@ -1,0 +1,41 @@
+# Dataset configuration
+dataset:
+  name: "image_envy_5000_coco"
+  train_images: "datasets/image_envy_5000_coco/trainingset/JPEGImages"
+  train_anno: "datasets/image_envy_5000_coco/trainingset/annotations.json"
+  val_images: "datasets/image_envy_5000_coco/testset/JPEGImages"
+  val_anno: "datasets/image_envy_5000_coco/testset/annotations.json"
+
+# Training configuration
+training:
+  epochs: 20
+  batch_size: 2
+  lr: 1.0e-3
+  momentum: 0.9
+  weight_decay: 1.0e-4
+  workers: 0  # Set to 0 for Windows stability, adjust based on OS
+  seed: 42
+
+# Optimization configuration
+optimization:
+  box_head_lr_multiplier: 10.0
+  mask_head_lr_multiplier: 10.0
+  amp: true
+  bf16: true
+  compile: false
+  patience: 10
+  warmup_epochs: 1
+  cosine_epochs: 0
+
+# Output configuration
+output:
+  checkpoint_dir: "datasets/checkpoints"
+  output_dir: "datasets/visualizations"
+  log_dir: "runs/maskrcnn"
+  experiment_name: "maskrcnn_envy_apples"
+
+# MLOps configuration
+mlops:
+  use_wandb: false
+  use_mlflow: false
+

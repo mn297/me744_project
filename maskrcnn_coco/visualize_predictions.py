@@ -1,6 +1,7 @@
 """
 Visualize Mask R-CNN predictions on images with bounding boxes and masks overlay.
 Supports both matplotlib and FiftyOne visualization.
+Supports YAML configuration.
 """
 
 import argparse
@@ -14,6 +15,7 @@ from matplotlib.patches import Polygon
 from PIL import Image
 import torchvision.transforms.functional as F
 import os
+import yaml
 
 try:
     import fiftyone as fo
@@ -28,6 +30,19 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def load_config(config_path):
+    """Load configuration from YAML file."""
+    if config_path is None:
+        return {}
+
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f)
+    return config
+
+
 def visualize_predictions_fiftyone(
     model: torch.nn.Module,
     images_dir: str,
@@ -35,17 +50,10 @@ def visualize_predictions_fiftyone(
     device: torch.device,
     score_threshold: float = 0.5,
     dataset_name: str = "maskrcnn_predictions",
+    pytorch_dataset=None,  # Pass dataset to reuse
 ):
     """
     Visualize model predictions using FiftyOne.
-
-    Args:
-        model: Trained Mask R-CNN model
-        images_dir: Path to images directory
-        annotations_path: Path to COCO annotations JSON
-        device: torch.device
-        score_threshold: Minimum confidence score to display
-        dataset_name: Name for the FiftyOne dataset
     """
     if not FIFTYONE_AVAILABLE:
         raise ImportError(
@@ -56,12 +64,10 @@ def visualize_predictions_fiftyone(
     print(f"Loading COCO dataset from {images_dir}...")
 
     # Load or create FiftyOne dataset
-    # Always create fresh dataset to avoid loading old cached data
-    # Delete existing dataset if it exists
     try:
         existing_dataset = fo.load_dataset(dataset_name)
         print(
-            f"⚠️  Found existing dataset '{dataset_name}' - deleting it to load fresh data..."
+            f"[WARNING] Found existing dataset '{dataset_name}' - deleting it to load fresh data..."
         )
         fo.delete_dataset(dataset_name)
     except:
@@ -75,36 +81,36 @@ def visualize_predictions_fiftyone(
         include_id=True,
         name=dataset_name,
     )
-    print(f"✅ Created new dataset: {dataset_name} from {images_dir}")
+    print(f"[SUCCESS] Created new dataset: {dataset_name} from {images_dir}")
 
     print(f"Loaded {len(coco_dataset)} images")
     print(f"Categories: {coco_dataset.info['categories']}")
 
-    # Check if ground truth is loaded (COCO datasets load GT automatically)
+    # Check if ground truth is loaded
     sample = coco_dataset.first()
     gt_field_lst = []
     for field_name in ["ground_truth", "detections", "segmentations", "coco"]:
         if hasattr(sample, field_name) and sample[field_name] is not None:
             gt_field_lst.append(field_name)
     if len(gt_field_lst) > 0:
-        print(f"✅ Ground truth loaded in fields: {gt_field_lst}")
+        print(f"[SUCCESS] Ground truth loaded in fields: {gt_field_lst}")
         print(
             f"   You can toggle between ground truth and predictions in the FiftyOne app!"
         )
     else:
-        print("⚠️  Warning: Ground truth field not found. Check dataset loading.")
+        print("[WARNING] Ground truth field not found. Check dataset loading.")
 
     # Load category mapping from annotations
     with open(annotations_path) as f:
         anno_data = json.load(f)
     cat_id_to_name = {cat["id"]: cat["name"] for cat in anno_data.get("categories", [])}
 
-    # Create a mapping from image file path to image_id for dataset lookup
-    # We'll need to load the PyTorch dataset to get the same preprocessing
-    pytorch_dataset = CocoSegmentationDataset(
-        images_dir,
-        annotations_path,
-    )
+    # Use passed pytorch dataset or create new one
+    if pytorch_dataset is None:
+        pytorch_dataset = CocoSegmentationDataset(
+            images_dir,
+            annotations_path,
+        )
 
     print(f"\nRunning inference on {len(coco_dataset)} images...")
 
@@ -159,12 +165,7 @@ def visualize_predictions_fiftyone(
             mask_2d = mask[0] if len(mask.shape) == 3 else mask
             full_mask_bool = mask_2d.astype(bool)
 
-            # FiftyOne expects an *instance mask* (cropped to the object's bounding box),
-            # but the model outputs a *full-image mask*. We need to convert it.
-
-            # 1. First, we need to resize the full-image mask from the model's output
-            #    resolution to the original image's resolution.
-            # Convert to tensor for resizing
+            # Resize mask logic
             mask_tensor = torch.from_numpy(full_mask_bool.astype(np.float32)).unsqueeze(
                 0
             )  # Shape: [1, H, W]
@@ -176,13 +177,15 @@ def visualize_predictions_fiftyone(
             )
             resized_full_mask = resized_mask_tensor.squeeze(0).numpy().astype(bool)
 
-            # 2. Now, crop the resized full-image mask to the bounding box to create
-            #    the instance mask that FiftyOne expects.
+            # Crop instance mask
             x1, y1, x2, y2 = box.astype(int)
-            instance_mask = resized_full_mask[y1:y2, x1:x2]
+            # Clip to image bounds
+            x1 = max(0, x1)
+            y1 = max(0, y1)
+            x2 = min(img_width, x2)
+            y2 = min(img_height, y2)
 
-            # legacy mistake mask
-            # mask_bool = mask_2d.astype(bool)
+            instance_mask = resized_full_mask[y1:y2, x1:x2]
 
             # Create detection with the instance mask
             detection = fo.Detection(
@@ -197,11 +200,11 @@ def visualize_predictions_fiftyone(
         sample["predictions"] = fo.Detections(detections=detections)
         sample.save()
 
-    print(f"\n✅ Predictions added to dataset!")
-    print(f"\n📊 Dataset fields:")
+    print(f"\n[SUCCESS] Predictions added to dataset!")
+    print(f"\n[INFO] Dataset fields:")
     print(f"   - Ground truth: '{gt_field_lst}' (if available)")
     print(f"   - Predictions: 'predictions'")
-    print(f"\n💡 In FiftyOne app:")
+    print(f"\n[INFO] In FiftyOne app:")
     print(
         f"   - Use the field selector to toggle between 'ground_truth' and 'predictions'"
     )
@@ -235,14 +238,6 @@ def visualize_predictions(
 ):
     """
     Visualize model predictions on images using matplotlib.
-
-    Args:
-        model: Trained Mask R-CNN model
-        dataset: CocoSegmentationDataset
-        device: torch.device
-        num_images: Number of images to visualize
-        score_threshold: Minimum confidence score to display
-        output_dir: Directory to save visualizations
     """
     model.eval()
     output_path = Path(output_dir)
@@ -257,17 +252,15 @@ def visualize_predictions(
     cat_names = {}
     try:
         # Try to get annotation file path from dataset or use default
-        anno_file = (
-            getattr(dataset, "annotation_file", None)
-            or getattr(dataset, "_annotation_file", None)
-            or str(
-                Path(__file__).parent
-                / "Fuji-Apple-Segmentation/testset/annotations.json"
-            )
+        anno_file = getattr(dataset, "annotation_file", None) or getattr(
+            dataset, "_annotation_file", None
         )
-        with open(anno_file) as f:
-            data = json.load(f)
-            cat_names = {cat["id"]: cat["name"] for cat in data.get("categories", [])}
+        if anno_file:
+            with open(anno_file) as f:
+                data = json.load(f)
+                cat_names = {
+                    cat["id"]: cat["name"] for cat in data.get("categories", [])
+                }
     except Exception as e:
         print(f"Warning: Could not load category names: {e}")
         pass
@@ -354,7 +347,7 @@ def visualize_predictions(
         ax2 = axes[1]
         ax2.imshow(image_np)
         ax2.set_title(
-            f"Predictions (score ≥ {score_threshold})", fontsize=16, fontweight="bold"
+            f"Predictions (score >= {score_threshold})", fontsize=16, fontweight="bold"
         )
         ax2.axis("off")
 
@@ -424,56 +417,81 @@ def visualize_predictions(
         plt.close()
 
 
-ROOT = Path(__file__).resolve().parent
-
-DEF = {
-    "train_images": ROOT / "Fuji-Apple-Segmentation_coco/trainingset/JPEGImages",
-    "train_anno": ROOT / "Fuji-Apple-Segmentation_coco/trainingset/annotations.json",
-    "val_images": ROOT / "Fuji-Apple-Segmentation_coco/testset/JPEGImages",
-    "val_anno": ROOT / "Fuji-Apple-Segmentation_coco/testset/annotations.json",
-    "checkpoint": ROOT / "checkpoints/best_bbox_ap.pth",
-    "checkpoint_dir": ROOT / "checkpoints",
-    "output_dir": ROOT / "visualizations",
-    "dataset_name": "Fuji-Apple-Segmentation",
-}
-
-# DEF = {
-#     "train_images": ROOT / "Car-Parts-Segmentation/trainingset/JPEGImages",
-#     "train_anno": ROOT / "Car-Parts-Segmentation/trainingset/annotations.json",
-#     "val_images": ROOT / "Car-Parts-Segmentation/testset/JPEGImages",
-#     "val_anno": ROOT / "Car-Parts-Segmentation/testset/annotations.json",
-#     "checkpoint": ROOT / "checkpoints/best_bbox_ap.pth",
-#     "output_dir": ROOT / "visualizations",
-#     "dataset_name": "Car-Parts-Segmentation",
-# }
-
-
 def main():
+    # Pre-parse to get config
+    pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument(
+        "--config", type=str, default=None, help="Path to experiment config YAML"
+    )
+    args, remaining_argv = pre_parser.parse_known_args()
+
+    # Load config
+    config = load_config(args.config)
+    dataset_cfg = config.get("dataset", {})
+    out_cfg = config.get("output", {})
+
+    # Helper to resolve paths relative to ROOT
+    def resolve_path(path_str, default=None):
+        if path_str:
+            return str(ROOT / path_str)
+        return default
+
+    default_train_images = resolve_path(dataset_cfg.get("train_images"))
+    default_train_anno = resolve_path(dataset_cfg.get("train_anno"))
+    default_val_images = resolve_path(dataset_cfg.get("val_images"))
+    default_val_anno = resolve_path(dataset_cfg.get("val_anno"))
+
+    default_checkpoint_path = resolve_path(out_cfg.get("checkpoint_dir", "checkpoints"))
+    if default_checkpoint_path:
+        # Try to find best model if directory given
+        if Path(default_checkpoint_path).is_dir():
+            default_checkpoint_path = str(
+                Path(default_checkpoint_path) / "best_bbox_ap.pth"
+            )
+
+    default_output_dir = resolve_path(out_cfg.get("output_dir", "visualizations"))
+    default_experiment_name = out_cfg.get("experiment_name")
+
     parser = argparse.ArgumentParser(description="Visualize Mask R-CNN predictions")
+    parser.add_argument(
+        "--config", type=str, default=None, help="Path to experiment config YAML"
+    )
+
     parser.add_argument(
         "--checkpoint",
         type=str,
-        # required=True,
-        default=DEF["checkpoint"],
-        help=f"Path to model checkpoint (e.g., {DEF['checkpoint']})",
+        default=default_checkpoint_path,
+        help="Path to model checkpoint",
     )
     parser.add_argument(
         "--images",
         type=str,
-        default=DEF["val_images"],
-        help=f"Path to images directory (e.g., {DEF['val_images']})",
+        default=default_val_images,
+        help="Path to images directory",
     )
     parser.add_argument(
         "--annotations",
         type=str,
-        default=DEF["val_anno"],
-        help=f"Path to annotations JSON file (e.g., {DEF['val_anno']})",
+        default=default_val_anno,
+        help="Path to annotations JSON file",
+    )
+    parser.add_argument(
+        "--train-images",
+        type=str,
+        default=default_train_images,
+        help="Path to training images (for category mapping)",
+    )
+    parser.add_argument(
+        "--train-anno",
+        type=str,
+        default=default_train_anno,
+        help="Path to training annotations (for category mapping)",
     )
     parser.add_argument(
         "--num-images",
         type=int,
         default=6,
-        help=f"Number of images to visualize",
+        help="Number of images to visualize",
     )
     parser.add_argument(
         "--score-threshold",
@@ -484,8 +502,8 @@ def main():
     parser.add_argument(
         "--output-dir",
         type=str,
-        default=DEF["output_dir"],
-        help=f"Output directory for visualizations",
+        default=default_output_dir,
+        help="Output directory for visualizations",
     )
     parser.add_argument(
         "--use-fiftyone",
@@ -495,10 +513,10 @@ def main():
     parser.add_argument(
         "--dataset-name",
         type=str,
-        default=None,  # Will be auto-generated from dataset path
-        help="Name for the FiftyOne dataset (only used with --use-fiftyone). Default: auto-generated",
+        default=default_experiment_name,
+        help="Name for the FiftyOne dataset (only used with --use-fiftyone)",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(remaining_argv)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -507,8 +525,8 @@ def main():
     print("Loading dataset...")
     # We need to load training dataset first to get category mappings
     train_ds = CocoSegmentationDataset(
-        DEF["train_images"],
-        DEF["train_anno"],
+        args.train_images,
+        args.train_anno,
     )
     val_ds = CocoSegmentationDataset(
         args.images,
@@ -523,20 +541,20 @@ def main():
 
     # Load model
     print(f"Loading model from {args.checkpoint}...")
+    if not args.checkpoint or not os.path.exists(args.checkpoint):
+        print(f"Error: Checkpoint not found at {args.checkpoint}")
+        return
+
     num_classes = val_ds.num_classes
     model = build_model(num_classes)
 
-    # Load checkpoint - handle both formats:
-    # 1. Full checkpoint: {"epoch": ..., "model": ..., "optimizer": ...}
-    # 2. Model state dict only: {model weights...}
+    # Load checkpoint
     checkpoint = torch.load(args.checkpoint, map_location=device)
     if isinstance(checkpoint, dict) and "model" in checkpoint:
-        # Full checkpoint format
         model.load_state_dict(checkpoint["model"])
         epoch = checkpoint.get("epoch", "unknown")
         print(f"Loaded checkpoint from epoch {epoch}")
     else:
-        # Model state dict only (e.g., best_bbox_ap.pth)
         model.load_state_dict(checkpoint)
         print("Loaded model state dict")
 
@@ -553,7 +571,6 @@ def main():
             return
 
         print(f"\nUsing FiftyOne for visualization...")
-        # Auto-generate dataset name from path if not provided
         if args.dataset_name is None:
             dataset_path = Path(args.images).parent.name
             args.dataset_name = f"maskrcnn_{dataset_path}"
@@ -565,11 +582,8 @@ def main():
             args.annotations,
             device,
             score_threshold=args.score_threshold,
-            dataset_name=(
-                "Fuji-Apple-Segmentation"
-                if args.dataset_name is None
-                else args.dataset_name
-            ),
+            dataset_name=args.dataset_name,
+            pytorch_dataset=val_ds,  # Pass prepared dataset
         )
     else:
         print(f"\nVisualizing {args.num_images} images with matplotlib...")
@@ -581,7 +595,7 @@ def main():
             score_threshold=args.score_threshold,
             output_dir=args.output_dir,
         )
-        print(f"\n✅ Visualizations saved to: {args.output_dir}/")
+        print(f"\n[SUCCESS] Visualizations saved to: {args.output_dir}/")
 
 
 if __name__ == "__main__":

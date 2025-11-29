@@ -7,7 +7,7 @@ from tqdm import tqdm
 # https://patrickwasp.com/create-your-own-coco-style-dataset/?utm_source=chatgpt.com
 # https://github.com/waspinator/pycococreator/blob/114df401e5310c602178b31a48d3bb4cef876258/pycococreatortools/pycococreatortools.py#L25
 
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(__file__).parent.parent
 
 # the folders containing the images / labels
 IMAGE_DIR = BASE_DIR / "datasets" / "image_envy_5000_before_unet" / "img"
@@ -76,21 +76,17 @@ for gt_path, im_path in tqdm(
     masks = np.stack(masks, axis=0).astype(np.uint8)
     assert np.max(np.sum(masks, axis=0)) == 1
 
+    # Create a binary mask: 1 if any fruit color is present, 0 otherwise
     label_map = np.zeros((annot.shape[0], annot.shape[1]), dtype=np.uint8)
     for cur_label in range(masks.shape[0]):
-        label_map += masks[cur_label] * (cur_label + 1)
-<<<<<<< HEAD
+        # If any of the fruit classes are present, mark as 1
+        label_map[masks[cur_label] > 0] = 1
 
     seg_out = NP_SEGDIR_ALL / f"{im_path.stem}.npy"
     img_out = NP_IMGDIR_ALL / f"{im_path.stem}.npy"
 
     np.save(seg_out, label_map.astype(np.uint8))
     np.save(img_out, im_cur)
-=======
-    
-    np.save(os.path.join(NP_SEGDIR_TRAIN_VAL, im.split("/")[-1].replace(".png",".npy")), label_map.astype(np.uint8))
-    np.save(os.path.join(NP_IMGDIR_TRAIN_VAL, im.split("/")[-1].replace(".png",".npy")), im_cur)
->>>>>>> 0571610354bc3fa679c33a4799cc4f294aeefdfd
     # print(np.asarray(Image.open(im)).shape)
 
     # label_map[label_map==3] = 254

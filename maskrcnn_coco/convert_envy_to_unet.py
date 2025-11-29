@@ -59,7 +59,7 @@ for g, (gt, im) in enumerate(zip(gts, images)):
     for cur_label in range(masks.shape[0]):
         label_map += masks[cur_label] * (cur_label + 1)
     
-    np.save(os.path.join(NP_SEGDIR_TRAIN_VAL, gt.split("/")[-1].replace(".png",".npy")), label_map.astype(np.uint8))
+    np.save(os.path.join(NP_SEGDIR_TRAIN_VAL, im.split("/")[-1].replace(".png",".npy")), label_map.astype(np.uint8))
     np.save(os.path.join(NP_IMGDIR_TRAIN_VAL, im.split("/")[-1].replace(".png",".npy")), im_cur)
     # print(np.asarray(Image.open(im)).shape)
 

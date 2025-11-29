@@ -121,9 +121,9 @@ class CocoSegmentationDataset(Dataset):
                 print(f"This is likely due to a problem in your annotations.json file.")
                 print(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
             # -------------------------------------
-            print("len(masks):", len(masks))
-            print("masks_array.shape:", masks_array.shape)
-            print("masks_array[0].shape:", masks_array[0].shape)
+            # print("len(masks):", len(masks))
+            # print("masks_array.shape:", masks_array.shape)
+            # print("masks_array[0].shape:", masks_array[0].shape)
         else:
             # Empty masks - get image size for correct shape
             img_info = self.coco.loadImgs(image_id)[0]

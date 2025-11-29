@@ -15,8 +15,13 @@ import cv2
 # ---------------------------------------------------------------------
 # paths
 # ---------------------------------------------------------------------
-RAW_DIR = Path("image_envy_5000")  # where all *_rgb_*, *_label_rgb_* live
-OUT_DIR = Path("image_envy_5000_coco")  # will contain JPEGImages/ and annotations.json
+BASE_DIR = Path(__file__).parent.parent
+RAW_DIR = (
+    BASE_DIR / "datasets" / "image_envy_5000"
+)  # where all *_rgb_*, *_label_rgb_* live
+OUT_DIR = (
+    BASE_DIR / "datasets" / "image_envy_5000_coco"
+)  # will contain JPEGImages/ and annotations.json
 TRAIN_DIR = OUT_DIR / "trainingset"
 TEST_DIR = OUT_DIR / "testset"
 
@@ -24,10 +29,14 @@ TEST_DIR = OUT_DIR / "testset"
 # label colors (RGBA)  ---> 2 categories: trunk (id=1), branches (id=2)
 # ---------------------------------------------------------------------
 color_dict = {
-    "trunk": [255, 1, 1, 255],
-    "trunk_2": [0, 137, 137, 255],
+    "trunk": [255, 0, 0, 255],
+    "trunk_2": [255, 1, 1, 255],
+    # "trunk_3": [0, 137, 137, 255],
+    # "trunk_4": [1, 137, 137, 255],
     "branches": [255, 255, 0, 255],
-    "branches_2": [0, 255, 0, 255],
+    "branches_2": [255, 255, 1, 255],
+    "branches_3": [0, 255, 0, 255],
+    "branches_4": [1, 255, 1, 255],
 }
 
 CATEGORY_DEFS = [
@@ -41,6 +50,8 @@ CATEGORY_DEFS = [
             color_dict["trunk_2"],
             color_dict["branches"],
             color_dict["branches_2"],
+            color_dict["branches_3"],
+            color_dict["branches_4"],
         ],
     ),
 ]

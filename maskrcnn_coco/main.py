@@ -1,15 +1,11 @@
 """
-Modernized main.py with enhanced MLOps capabilities.
-
-This is an example of how to integrate the MLOps module.
-You can either:
-1. Use this as a replacement for main.py
-2. Gradually migrate features from this to main.py
+Modernized main.py with enhanced MLOps capabilities and YAML configuration support.
 """
 
 import argparse
 import json
 import os
+import yaml
 from pathlib import Path
 from datetime import datetime
 import torch
@@ -36,91 +32,108 @@ try:
     MLOPS_AVAILABLE = True
 except ImportError:
     MLOPS_AVAILABLE = False
-    print("⚠️  MLOps module not available. Using basic TensorBoard only.")
+    print("[WARNING] MLOps module not available. Using basic TensorBoard only.")
 
 from torch.utils.tensorboard import SummaryWriter
 
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 
-DEF = {
-    "train_images": ROOT / "Fuji-Apple-Segmentation_coco/trainingset/JPEGImages",
-    "train_anno": ROOT / "Fuji-Apple-Segmentation_coco/trainingset/annotations.json",
-    "val_images": ROOT / "Fuji-Apple-Segmentation_coco/testset/JPEGImages",
-    "val_anno": ROOT / "Fuji-Apple-Segmentation_coco/testset/annotations.json",
-    "checkpoint": ROOT / "checkpoints/best_bbox_ap.pth",
-    "checkpoint_dir": ROOT / "checkpoints",
-    "output_dir": ROOT / "visualizations",
-    "dataset_name": "Fuji-Apple-Segmentation",
-}
 
-# DEF = {
-#     "train_images": ROOT / "Car-Parts-Segmentation/trainingset/JPEGImages",
-#     "train_anno": ROOT / "Car-Parts-Segmentation/trainingset/annotations.json",
-#     "val_images": ROOT / "Car-Parts-Segmentation/testset/JPEGImages",
-#     "val_anno": ROOT / "Car-Parts-Segmentation/testset/annotations.json",
-#     "checkpoint": ROOT / "checkpoints/best_bbox_ap.pth",
-#     "checkpoint_dir": ROOT / "checkpoints",
-#     "output_dir": ROOT / "visualizations",
-#     "dataset_name": "Car-Parts-Segmentation",
-# }
+def load_config(config_path):
+    """Load configuration from YAML file."""
+    if config_path is None:
+        return {}
+    
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
+    return config
 
 
 def parse_args():
+    # First pass to get config file
+    pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument("--config", type=str, default=None, help="Path to experiment config YAML")
+    args, remaining_argv = pre_parser.parse_known_args()
+
+    # Load config
+    config = load_config(args.config)
+    
+    # Defaults from config or fallback
+    dataset_cfg = config.get("dataset", {})
+    train_cfg = config.get("training", {})
+    optim_cfg = config.get("optimization", {})
+    out_cfg = config.get("output", {})
+    mlops_cfg = config.get("mlops", {})
+
+    # Helper to resolve paths relative to ROOT
+    def resolve_path(path_str, default=None):
+        if path_str:
+            return str(ROOT / path_str)
+        return default
+
+    default_train_images = resolve_path(dataset_cfg.get("train_images"))
+    default_train_anno = resolve_path(dataset_cfg.get("train_anno"))
+    default_val_images = resolve_path(dataset_cfg.get("val_images"))
+    default_val_anno = resolve_path(dataset_cfg.get("val_anno"))
+    
+    default_checkpoint_dir = resolve_path(out_cfg.get("checkpoint_dir", "checkpoints"))
+    default_output_dir = resolve_path(out_cfg.get("output_dir", "visualizations"))
+    default_log_dir = out_cfg.get("log_dir", "runs/maskrcnn")
+
     p = argparse.ArgumentParser(
         description="Train Mask R-CNN on COCO-format data (MLOps Enhanced)"
     )
+    
+    # Config arg (already parsed but included for help)
+    p.add_argument("--config", type=str, default=None, help="Path to experiment config YAML")
 
     # Dataset
-    p.add_argument(
-        "--train-images",
-        type=str,
-        default=DEF["train_images"],
-    )
-    p.add_argument(
-        "--train-anno",
-        type=str,
-        default=DEF["train_anno"],
-    )
-    p.add_argument("--val-images", type=str, default=DEF["val_images"])
-    p.add_argument(
-        "--val-anno",
-        type=str,
-        default=DEF["val_anno"],
-    )
+    p.add_argument("--train-images", type=str, default=default_train_images, required=default_train_images is None)
+    p.add_argument("--train-anno", type=str, default=default_train_anno, required=default_train_anno is None)
+    p.add_argument("--val-images", type=str, default=default_val_images)
+    p.add_argument("--val-anno", type=str, default=default_val_anno)
 
     # Training
-    p.add_argument("--epochs", type=int, default=300)
-    p.add_argument("--batch-size", type=int, default=2)
-    p.add_argument("--workers", type=int, default=max(2, os.cpu_count()))
-    p.add_argument("--lr", type=float, default=1e-3)
-    p.add_argument("--momentum", type=float, default=0.9)
-    p.add_argument("--weight-decay", type=float, default=1e-4)
+    p.add_argument("--epochs", type=int, default=train_cfg.get("epochs", 300))
+    p.add_argument("--batch-size", type=int, default=train_cfg.get("batch_size", 2))
+    p.add_argument("--workers", type=int, default=train_cfg.get("workers", max(2, os.cpu_count())))
+    p.add_argument("--lr", type=float, default=train_cfg.get("lr", 1e-3))
+    p.add_argument("--momentum", type=float, default=train_cfg.get("momentum", 0.9))
+    p.add_argument("--weight-decay", type=float, default=train_cfg.get("weight_decay", 1e-4))
     p.add_argument(
         "--box-head-lr-multiplier",
         type=float,
-        default=10.0,
-        help="Learning rate multiplier for box heads (default: 10x)",
+        default=optim_cfg.get("box_head_lr_multiplier", 10.0),
+        help="Learning rate multiplier for box heads",
     )
     p.add_argument(
         "--mask-head-lr-multiplier",
         type=float,
-        default=10.0,
-        help="Learning rate multiplier for mask heads (default: 10x)",
+        default=optim_cfg.get("mask_head_lr_multiplier", 10.0),
+        help="Learning rate multiplier for mask heads",
     )
 
     # Output
-    p.add_argument("--out", type=str, default=DEF["checkpoint_dir"])
-    p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--logdir", type=str, default="runs/maskrcnn")
+    p.add_argument("--out", type=str, default=default_checkpoint_dir)
+    p.add_argument("--seed", type=int, default=train_cfg.get("seed", 42))
+    p.add_argument("--logdir", type=str, default=default_log_dir)
 
     # Features
-    p.add_argument("--amp", action=argparse.BooleanOptionalAction, default=True)
-    p.add_argument("--bf16", action=argparse.BooleanOptionalAction, default=True)
-    p.add_argument("--compile", action=argparse.BooleanOptionalAction, default=False)
-    p.add_argument("--patience", type=int, default=10)
-    p.add_argument("--warmup-epochs", type=int, default=1)
-    p.add_argument("--cosine-epochs", type=int, default=0)
+    # Handle boolean args safely
+    def str2bool(v):
+        if isinstance(v, bool): return v
+        if v.lower() in ('yes', 'true', 't', 'y', '1'): return True
+        elif v.lower() in ('no', 'false', 'f', 'n', '0'): return False
+        else: raise argparse.ArgumentTypeError('Boolean value expected.')
+
+    p.add_argument("--amp", type=str2bool, default=optim_cfg.get("amp", True))
+    p.add_argument("--bf16", type=str2bool, default=optim_cfg.get("bf16", True))
+    p.add_argument("--compile", type=str2bool, default=optim_cfg.get("compile", False))
+    
+    p.add_argument("--patience", type=int, default=optim_cfg.get("patience", 10))
+    p.add_argument("--warmup-epochs", type=int, default=optim_cfg.get("warmup_epochs", 1))
+    p.add_argument("--cosine-epochs", type=int, default=optim_cfg.get("cosine_epochs", 0))
     p.add_argument(
         "--resume",
         type=str,
@@ -131,18 +144,16 @@ def parse_args():
     )
 
     # MLOps
-    p.add_argument(
-        "--use-wandb", action="store_true", help="Enable Weights & Biases tracking"
-    )
-    p.add_argument("--use-mlflow", action="store_true", help="Enable MLflow tracking")
+    p.add_argument("--use-wandb", action="store_true", default=mlops_cfg.get("use_wandb", False), help="Enable Weights & Biases tracking")
+    p.add_argument("--use-mlflow", action="store_true", default=mlops_cfg.get("use_mlflow", False), help="Enable MLflow tracking")
     p.add_argument(
         "--experiment-name",
         type=str,
-        default=None,
+        default=out_cfg.get("experiment_name", None),
         help="Experiment name (auto-generated if not provided)",
     )
 
-    return p.parse_args()
+    return p.parse_args(remaining_argv)
 
 
 def main():
@@ -162,6 +173,9 @@ def main():
     print("\n" + "=" * 80)
     print("LOADING DATASETS")
     print("=" * 80)
+    print(f"Train Images: {args.train_images}")
+    print(f"Train Annotations: {args.train_anno}")
+    
     train_ds = CocoSegmentationDataset(
         args.train_images,
         args.train_anno,
@@ -241,7 +255,7 @@ def main():
         # Handle "auto" or empty string to find latest in --out directory
         if args.resume.lower() in ("auto", ""):
             checkpoint_dir = Path(args.out)
-            print(f"\n🔍 Auto-detecting latest checkpoint in {checkpoint_dir}...")
+            print(f"\n[SEARCH] Auto-detecting latest checkpoint in {checkpoint_dir}...")
         else:
             checkpoint_dir = Path(args.resume)
 
@@ -252,25 +266,25 @@ def main():
             if checkpoint_files:
                 # Sort by modification time (newest first)
                 checkpoint_path = max(checkpoint_files, key=lambda p: p.stat().st_mtime)
-                print(f"📂 Found latest checkpoint: {checkpoint_path}")
+                print(f"[FOUND] Found latest checkpoint: {checkpoint_path}")
             else:
-                print(f"⚠️  No checkpoints found in {checkpoint_dir}")
+                print(f"[WARNING] No checkpoints found in {checkpoint_dir}")
                 args.resume = None
         elif checkpoint_dir.exists() and checkpoint_dir.is_file():
             # Resume is a specific file path
             checkpoint_path = checkpoint_dir
         else:
-            print(f"⚠️  Checkpoint path not found: {checkpoint_dir}")
+            print(f"[WARNING] Checkpoint path not found: {checkpoint_dir}")
             print("   Starting training from scratch...\n")
             args.resume = None
 
         if checkpoint_path and checkpoint_path.exists():
-            print(f"🔄 Resuming from checkpoint: {checkpoint_path}")
+            print(f"[RESUMING] Resuming from checkpoint: {checkpoint_path}")
             checkpoint = torch.load(checkpoint_path, map_location=device)
             model.load_state_dict(checkpoint["model"])
             optimizer.load_state_dict(checkpoint["optimizer"])
             start_epoch = checkpoint.get("epoch", 0)
-            print(f"✅ Resumed from epoch {start_epoch}\n")
+            print(f"[SUCCESS] Resumed from epoch {start_epoch}\n")
 
     # MLOps: Enhanced Experiment Tracking
     print("\n" + "=" * 80)

@@ -52,12 +52,6 @@ def pick_color(image_path):
 
 
 if __name__ == "__main__":
-    # Path to the specific file requested
-    img_path = os.path.join(
-        "maskrcnn_coco", "image_envy_5000", "0010_label_rgb_0001.png"
-    )
-    # Fallback if running from inside maskrcnn_coco directory
-    if not os.path.exists(img_path):
-        img_path = os.path.join("image_envy_5000", "0010_label_rgb_0001.png")
+    img_path = "C:/Users/john/Documents/programming_dirty/me744_project/datasets/image_envy_5000/0010_label_rgb_0001.png"
 
     pick_color(img_path)

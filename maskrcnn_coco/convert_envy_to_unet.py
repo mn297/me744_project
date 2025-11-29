@@ -79,12 +79,18 @@ for gt_path, im_path in tqdm(
     label_map = np.zeros((annot.shape[0], annot.shape[1]), dtype=np.uint8)
     for cur_label in range(masks.shape[0]):
         label_map += masks[cur_label] * (cur_label + 1)
+<<<<<<< HEAD
 
     seg_out = NP_SEGDIR_ALL / f"{im_path.stem}.npy"
     img_out = NP_IMGDIR_ALL / f"{im_path.stem}.npy"
 
     np.save(seg_out, label_map.astype(np.uint8))
     np.save(img_out, im_cur)
+=======
+    
+    np.save(os.path.join(NP_SEGDIR_TRAIN_VAL, im.split("/")[-1].replace(".png",".npy")), label_map.astype(np.uint8))
+    np.save(os.path.join(NP_IMGDIR_TRAIN_VAL, im.split("/")[-1].replace(".png",".npy")), im_cur)
+>>>>>>> 0571610354bc3fa679c33a4799cc4f294aeefdfd
     # print(np.asarray(Image.open(im)).shape)
 
     # label_map[label_map==3] = 254

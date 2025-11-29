@@ -10,4 +10,4 @@ def plot_img_and_mask(img, mask):
         ax[i + 1].set_title(f'Mask (class {i + 1})')
         ax[i + 1].imshow(mask == i)
     plt.xticks([]), plt.yticks([])
-    plt.show()
+    plt.savefig("visualization.png")

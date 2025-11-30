@@ -8,21 +8,27 @@ import shutil
 from scipy.ndimage import label
 import random
 
-imgs_save = "/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/mixed/imgs"
-segs_save = "/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/mixed/segs"
-save_seg_vis = "/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/mixed/seg_vis_test"
-save_img_vis = "/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/mixed/img_vis_test"
-vis_only = True 
+imgs_save = "/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/mixed/test/img"
+segs_save = "/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/mixed/test/seg"
+save_seg_vis = "/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/mixed/test/seg_vis_test"
+save_img_vis = "/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/mixed/test/img_vis_test"
+
+save_vis = 0.01
+save_files = True 
+save_format = ".png"  # or ".png"
 
 imgs_envy = sorted(glob.glob(os.path.join("/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/np_imgs_test", "*.npy"), recursive=True))
-segs_envy = sorted(glob.glob(os.path.join("/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/np_segs_2lbs", "*.npy"), recursive=True))
+segs_envy = sorted(glob.glob(os.path.join("/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/np_segs_2lbs_test", "*.npy"), recursive=True))
 imgs_fuji = sorted(glob.glob(os.path.join("/Users/ziyaoshang/Desktop/MEproject/me744_project/datasets/Fuji-Apple-Segmentation_unet/np_imgs_train", "*.npy"), recursive=True))
 masks_fruits = sorted(glob.glob(os.path.join("/Users/ziyaoshang/Desktop/MEproject/me744_project/datasets/Fuji-Apple-Segmentation_unet/np_segs_train", "*.npy"), recursive=True))
 # masks_leaves = sorted(glob.glob(os.path.join("/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/np_segs_small_renamed", "*.npy"), recursive=True))
 
 label_fruit = 0
 
-for i in range(10):
+assert len(imgs_fuji) == len(masks_fruits)
+assert len(imgs_envy) == len(segs_envy)
+
+for i in range(len(imgs_envy)):
     inst_masks = 0
     img_e = np.load(imgs_envy[i]) # rgb
     seg_e = np.load(segs_envy[i])
@@ -58,19 +64,22 @@ for i in range(10):
             inst_masks += 1
 
     # save the mixed image and segmentation mask
-    if not vis_only:
-        np.save(os.path.join(imgs_save, imgs_envy[i].split("/")[-1]), img_e)
+    if save_files:
         np.save(os.path.join(segs_save, segs_envy[i].split("/")[-1]), seg_e)
-
-    # save a visualization of the segmentation mask, with different colors for each class
-    seg_vis = np.zeros((seg_e.shape[0], seg_e.shape[1], 3), dtype=np.uint8)
-    seg_vis[seg_e == 0] = [0, 0, 0]          # Background: Black
-    seg_vis[seg_e == 1] = [255, 0, 0]      # Class 1: Red
-    seg_vis[seg_e == 2] = [255, 255, 0]  # Class 2: yellow 
-    # seg_vis[seg_e == 3] = [0, 255, 0]  # Class 3: green
-    # seg_vis[seg_e == 4] = [0, 0, 255]      # Class 4: Blue
-    # Image.fromarray(seg_vis).save(os.path.join(save_seg_vis, segs_envy[i].split("/")[-1].replace(".npy", ".png")))
-    Image.fromarray(img_e).save(os.path.join(save_img_vis, imgs_envy[i].split("/")[-1].replace(".npy", ".png")))
-        
-
+        if save_format == ".png":
+            Image.fromarray(img_e).save(os.path.join(imgs_save, imgs_envy[i].split("/")[-1].replace(".npy", ".png")))
+        else:
+            np.save(os.path.join(imgs_save, imgs_envy[i].split("/")[-1]), img_e)
             
+
+    if save_vis > 0:
+        if random.random() < save_vis:
+            # save a visualization of the segmentation mask, with different colors for each class
+            seg_vis = np.zeros((seg_e.shape[0], seg_e.shape[1], 3), dtype=np.uint8)
+            seg_vis[seg_e == 0] = [0, 0, 0]          # Background: Black
+            seg_vis[seg_e == 1] = [255, 0, 0]      # Class 1: Red
+            seg_vis[seg_e == 2] = [255, 255, 0]  # Class 2: yellow 
+            # seg_vis[seg_e == 3] = [0, 255, 0]  # Class 3: green
+            # seg_vis[seg_e == 4] = [0, 0, 255]      # Class 4: Blue
+            Image.fromarray(seg_vis).save(os.path.join(save_seg_vis, segs_envy[i].split("/")[-1].replace(".npy", ".png")))
+            Image.fromarray(img_e).save(os.path.join(save_img_vis, imgs_envy[i].split("/")[-1].replace(".npy", ".png")))

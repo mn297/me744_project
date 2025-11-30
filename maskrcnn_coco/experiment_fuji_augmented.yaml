@@ -1,0 +1,40 @@
+# Dataset configuration
+dataset:
+  name: "Fuji-Apple-Segmentation-Augmented"
+  train_images: "datasets/Fuji-Apple-Segmentation_with_envy_mask_coco/trainingset/JPEGImages"
+  train_anno: "datasets/Fuji-Apple-Segmentation_with_envy_mask_coco/trainingset/annotations.json"
+  val_images: "datasets/Fuji-Apple-Segmentation_with_envy_mask_coco/testset/JPEGImages"
+  val_anno: "datasets/Fuji-Apple-Segmentation_with_envy_mask_coco/testset/annotations.json"
+
+# Training configuration
+training:
+  epochs: 300
+  batch_size: 2
+  lr: 1.0e-3
+  momentum: 0.9
+  weight_decay: 1.0e-4
+  workers: 0 # Set to 0 for Windows stability, adjust based on OS
+  seed: 42
+
+# Optimization configuration
+optimization:
+  box_head_lr_multiplier: 10.0
+  mask_head_lr_multiplier: 10.0
+  amp: true
+  bf16: true
+  compile: false
+  patience: 10
+  warmup_epochs: 1
+  cosine_epochs: 0
+
+# Output configuration
+output:
+  checkpoint_dir: "datasets/checkpoints/Fuji-Apple-Segmentation-Augmented"
+  output_dir: "datasets/visualizations/Fuji-Apple-Segmentation-Augmented"
+  log_dir: "runs/maskrcnn/Fuji-Apple-Segmentation-Augmented"
+  experiment_name: "maskrcnn_fuji_augmented"
+
+# MLOps configuration
+mlops:
+  use_wandb: false
+  use_mlflow: false

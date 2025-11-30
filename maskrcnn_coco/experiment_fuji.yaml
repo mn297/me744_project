@@ -13,7 +13,7 @@ training:
   lr: 1.0e-3
   momentum: 0.9
   weight_decay: 1.0e-4
-  workers: 0  # Set to 0 for Windows stability, adjust based on OS
+  workers: 0 # Set to 0 for Windows stability, adjust based on OS
   seed: 42
 
 # Optimization configuration
@@ -29,13 +29,12 @@ optimization:
 
 # Output configuration
 output:
-  checkpoint_dir: "datasets/checkpoints"
-  output_dir: "datasets/visualizations"
-  log_dir: "runs/maskrcnn"
+  checkpoint_dir: "datasets/checkpoints/Fuji-Apple-Segmentation"
+  output_dir: "datasets/visualizations/Fuji-Apple-Segmentation"
+  log_dir: "runs/maskrcnn/Fuji-Apple-Segmentation"
   experiment_name: "maskrcnn_fuji_apples"
 
 # MLOps configuration
 mlops:
   use_wandb: false
   use_mlflow: false
-

@@ -44,7 +44,7 @@ CATEGORY_DEFS = [
     # ("branches", 2, [color_dict["branches"], color_dict["branches_2"]]),
     (
         "branches",
-        1,
+        2,
         [
             color_dict["trunk"],
             color_dict["trunk_2"],
@@ -144,21 +144,26 @@ def process_dataset(image_paths, output_dir, set_name):
             # Ultralytics YOLO converter expects polygons in "segmentation", not RLE
             # We need to extract contours from the mask
 
-            contours, _ = cv2.findContours(
-                mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-            )
+            # contours, _ = cv2.findContours(
+            #     mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE
+            # )
 
-            segmentation = []
-            for contour in contours:
-                if contour.size >= 6:  # Need at least 3 points (6 coords)
-                    segmentation.append(contour.flatten().tolist())
+            # segmentation = []
+            # for contour in contours:
+            #     if contour.size >= 6:  # Need at least 3 points (6 coords)
+            #         segmentation.append(contour.flatten().tolist())
 
-            # If no valid contours found, skip
-            if not segmentation:
-                continue
+            # # If no valid contours found, skip
+            # if not segmentation:
+            #     continue
 
             # Recalculate area and bbox from mask
             rle = maskUtils.encode(np.asfortranarray(mask))
+
+            # Decode bytes to string for JSON serialization
+            if isinstance(rle["counts"], bytes):
+                rle["counts"] = rle["counts"].decode("ascii")
+
             area = float(maskUtils.area(rle))
             bbox = [float(x) for x in maskUtils.toBbox(rle)]
 
@@ -167,7 +172,8 @@ def process_dataset(image_paths, output_dir, set_name):
                     "id": ann_id,
                     "image_id": img_id,
                     "category_id": cat_id,
-                    "segmentation": segmentation,  # Use polygon list
+                    # "segmentation": segmentation,  # Use polygon list
+                    "segmentation": rle,
                     "area": area,
                     "bbox": bbox,
                     "iscrowd": 0,
@@ -186,7 +192,6 @@ def process_dataset(image_paths, output_dir, set_name):
         "images": images,
         "annotations": annotations,
         "categories": [
-            {"id": 1, "name": "trunk", "supercategory": "tree"},
             {"id": 2, "name": "branches", "supercategory": "tree"},
         ],
     }
@@ -210,10 +215,10 @@ if __name__ == "__main__":
     # Since files are sorted, we can slice the list.
 
     # Slice for training (first 300)
-    train_labels = all_label_paths[:300]
+    train_labels = all_label_paths[:800]
 
     # Slice for testing (next 100: 301-400)
-    test_labels = all_label_paths[300:400]
+    test_labels = all_label_paths[800:1000]
 
     if not train_labels:
         print("No labels found for training set!")

@@ -1,6 +1,0 @@
-path: ../maskrcnn_coco/Fuji-Apple-Segmentation
-train: trainingset/JPEGImages
-val: trainingset/JPEGImages
-
-names:
-  0: apple

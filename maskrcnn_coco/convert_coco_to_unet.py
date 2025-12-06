@@ -6,24 +6,6 @@ from tqdm import tqdm
 import shutil
 import os
 
-# Define paths
-BASE_DIR = Path(__file__).parent.parent  # Assuming script is in maskrcnn_coco/
-DATASET_DIR = BASE_DIR / "datasets" / "Fuji-Apple-Segmentation_coco"
-OUTPUT_DIR = BASE_DIR / "datasets" / "Fuji-Apple-Segmentation_unet"
-
-# Input paths
-TRAIN_JSON = DATASET_DIR / "trainingset" / "annotations.json"
-TRAIN_IMG_DIR = DATASET_DIR / "trainingset" / "JPEGImages"
-VAL_JSON = DATASET_DIR / "testset" / "annotations.json"
-VAL_IMG_DIR = DATASET_DIR / "testset" / "JPEGImages"
-
-# Output paths
-# Following the structure of convert_envy_to_unet.py but adapted for pre-split data
-NP_IMGDIR_TRAIN = OUTPUT_DIR / "np_imgs_train"
-NP_SEGDIR_TRAIN = OUTPUT_DIR / "np_segs_train"
-NP_IMGDIR_VAL = OUTPUT_DIR / "np_imgs_val"
-NP_SEGDIR_VAL = OUTPUT_DIR / "np_segs_val"
-
 
 def create_mask_from_polygons(image_shape, annotations):
     """
@@ -128,6 +110,25 @@ def process_split(json_path, img_dir, out_img_dir, out_seg_dir, desc="Processing
 
         np.save(img_out_path, img_np)
         np.save(seg_out_path, mask_np)
+
+
+# Define paths
+BASE_DIR = Path(__file__).parent.parent  # Assuming script is in maskrcnn_coco/
+DATASET_DIR = BASE_DIR / "datasets" / "Fuji-Apple-Segmentation_coco"
+OUTPUT_DIR = BASE_DIR / "datasets" / "Fuji-Apple-Segmentation_unet"
+
+# Input paths
+TRAIN_JSON = DATASET_DIR / "trainingset" / "annotations.json"
+TRAIN_IMG_DIR = DATASET_DIR / "trainingset" / "JPEGImages"
+VAL_JSON = DATASET_DIR / "testset" / "annotations.json"
+VAL_IMG_DIR = DATASET_DIR / "testset" / "JPEGImages"
+
+# Output paths
+# Following the structure of convert_envy_to_unet.py but adapted for pre-split data
+NP_IMGDIR_TRAIN = OUTPUT_DIR / "np_imgs_train"
+NP_SEGDIR_TRAIN = OUTPUT_DIR / "np_segs_train"
+NP_IMGDIR_VAL = OUTPUT_DIR / "np_imgs_val"
+NP_SEGDIR_VAL = OUTPUT_DIR / "np_segs_val"
 
 
 def main():

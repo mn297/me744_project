@@ -15,8 +15,6 @@ DATASETS_DIR = BASE_DIR / "datasets"
 # Source Datasets
 # We use Fuji U-Net NPY files for easy apple extraction
 FUJI_UNET_DIR = DATASETS_DIR / "Fuji-Apple-Segmentation_unet"
-FUJI_IMGS_DIR = FUJI_UNET_DIR / "np_imgs_train"
-FUJI_SEGS_DIR = FUJI_UNET_DIR / "np_segs_train"
 
 
 ENVY_DIR = DATASETS_DIR / "image_envy_5000"
@@ -79,10 +77,10 @@ def get_envy_images():
     return rgb_files, seg_files
 
 
-def get_fuji_samples() -> list[tuple[Path, Path]]:
+def get_fuji_samples(img_dir: Path, seg_dir: Path) -> list[tuple[Path, Path]]:
     """Return list of (img_path, seg_path) tuples."""
-    imgs = sorted(list(FUJI_IMGS_DIR.glob("*.npy")))
-    segs = sorted(list(FUJI_SEGS_DIR.glob("*.npy")))
+    imgs = sorted(list(img_dir.glob("*.npy")))
+    segs = sorted(list(seg_dir.glob("*.npy")))
     return list(zip(imgs, segs))
 
 
@@ -315,10 +313,18 @@ def main():
     setup_output_dir()
 
     envy_images, envy_labels = get_envy_images()
-    fuji_samples = get_fuji_samples()
+
+    fuji_train_imgs = FUJI_UNET_DIR / "np_imgs_train"
+    fuji_train_segs = FUJI_UNET_DIR / "np_segs_train"
+    fuji_val_imgs = FUJI_UNET_DIR / "np_imgs_val"
+    fuji_val_segs = FUJI_UNET_DIR / "np_segs_val"
+
+    fuji_train_samples = get_fuji_samples(fuji_train_imgs, fuji_train_segs)
+    fuji_val_samples = get_fuji_samples(fuji_val_imgs, fuji_val_segs)
 
     print(f"Found {len(envy_images)} Envy images")
-    print(f"Found {len(fuji_samples)} Fuji training samples for extraction")
+    print(f"Found {len(fuji_train_samples)} Fuji training samples")
+    print(f"Found {len(fuji_val_samples)} Fuji validation samples")
 
     # Selection
     if len(envy_images) < NUM_ENVY_IMAGES:
@@ -367,7 +373,7 @@ def main():
         train_img_dir,
         train_envy_img_lst,
         train_envy_seg_lst,
-        fuji_samples,
+        fuji_train_samples,
         unet_train_img_dir,
         unet_train_seg_dir,
     )
@@ -377,7 +383,7 @@ def main():
         test_img_dir,
         test_envy_img_lst,
         test_envy_seg_lst,
-        fuji_samples,
+        fuji_val_samples,
         unet_test_img_dir,
         unet_test_seg_dir,
     )

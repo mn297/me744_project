@@ -40,7 +40,7 @@ color_dict = {
 }
 
 CATEGORY_DEFS = [
-    # ("trunk", 1, [color_dict["trunk"], color_dict["trunk_2"]]),
+    ("nothing", 1, []),
     # ("branches", 2, [color_dict["branches"], color_dict["branches_2"]]),
     (
         "branches",

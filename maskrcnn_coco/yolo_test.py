@@ -24,22 +24,26 @@ def run_prediction(model: YOLO, val_dir: Path) -> None:
 
 
 def main() -> None:
-    """Train, validate, and briefly test a YOLOv8 segmentation model."""
     model = YOLO("yolo11s-seg.pt")
-    dataset_yaml = Path("image_envy_5000_yolo/dataset.yaml")
-    val_dir = Path("image_envy_5000_yolo/images/val")
+    current_dir = Path(__file__).parent.resolve()
+    parent = current_dir.parent
+    dataset_dir = parent / "datasets" / "image_envy_5000_yolo"
+    dataset_yaml = dataset_dir / "dataset.yaml"
+    val_dir = dataset_dir / "images" / "val"
 
     results = model.train(
         data=str(dataset_yaml),
         epochs=5,
         imgsz=1024,
+        batch=8,
         device=0,
+        workers=2,
         # name="yolov8m-seg-fuji-apple",
     )
     print("Training complete:", results)
 
     print("Validation metrics:")
-    metrics = model.val()
+    metrics = model.val(batch=8)
     print(metrics)
 
     run_prediction(model, val_dir)

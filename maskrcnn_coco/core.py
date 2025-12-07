@@ -586,6 +586,16 @@ def validate_loss(model, loader, device):
     was_training = model.training
     model.train()
 
+    # FREEZE BATCH NORM AND DROPOUT
+    # --- THE FIX ---
+    # We must manually freeze layers that behave differently in training
+    # 1. BatchNorm: Don't update running stats (mean/var) with validation data
+    # 2. Dropout: Don't randomly drop neurons (we want deterministic results)
+    for module in model.modules():
+        if isinstance(
+            module, (torch.nn.modules.batchnorm._BatchNorm, torch.nn.Dropout)
+        ):
+            module.eval()
     total, n = 0.0, 0
     for images, targets in tqdm(loader, desc="val_loss", leave=False):
         images, targets = _to_device(images, targets, device)
@@ -625,8 +635,12 @@ def fit(
 ):
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    best_bbox_ap = -1.0
+    best_val_loss = float("inf")  # Track best loss instead of AP
+    best_bbox_ap = -1.0  # Keep tracking AP too
     epochs_no_improve = 0
+
+    # History tracking
+    history = {"epoch": [], "val_loss": [], "bbox_map": [], "segm_map": []}
 
     # # AMP setup
     scaler = None
@@ -636,6 +650,8 @@ def fit(
             scaler = None  # bf16 does not need GradScaler
         else:
             scaler = torch.amp.GradScaler("cuda")
+
+    best_epoch = 0
 
     for epoch in range(start_epoch + 1, epochs + 1):
         print(f"\nEpoch {epoch}/{epochs}")
@@ -666,6 +682,12 @@ def fit(
         print(
             f"[INFO] Mask mAP: {metrics['segm']['AP']:.4f} (AP50: {metrics['segm']['AP50']:.4f})"
         )
+
+        # Update history
+        history["epoch"].append(epoch)
+        history["val_loss"].append(float(val_loss))
+        history["bbox_map"].append(float(metrics["bbox"]["AP"]))
+        history["segm_map"].append(float(metrics["segm"]["AP"]))
 
         if tracker is not None:
             from mlops import log_training_metrics
@@ -704,21 +726,37 @@ def fit(
         )
         print(f"[SAVED] Saved checkpoint: {checkpoint_path}")
 
-        # Track best by bbox AP
-        curr_ap = metrics["bbox"]["AP"]
-        if np.isfinite(curr_ap) and curr_ap > best_bbox_ap:
-            best_bbox_ap = curr_ap
+        # Track best by Validation Loss
+        # Save new best model if val_loss improves
+        if np.isfinite(val_loss) and val_loss < best_val_loss:
+            best_val_loss = val_loss
             epochs_no_improve = 0
-            best_path = out / "best_bbox_ap.pth"
+            best_path = out / "best_val_loss.pth"
             torch.save(model.state_dict(), best_path)
-            print(f"[BEST] Saved new best model: {best_path} (bbox AP: {best_bbox_ap:.4f})")
+            print(
+                f"[BEST] Saved new best model (val_loss): {best_path} (val_loss: {best_val_loss:.4f})"
+            )
+            best_epoch = epoch
         else:
             epochs_no_improve += 1
 
+        # Track best by bbox AP (keep legacy logic)
+        curr_ap = metrics["bbox"]["AP"]
+        if np.isfinite(curr_ap) and curr_ap > best_bbox_ap:
+            best_bbox_ap = curr_ap
+            best_path_ap = out / "best_bbox_ap.pth"
+            torch.save(model.state_dict(), best_path_ap)
+            print(
+                f"[BEST] Saved new best model (bbox AP): {best_path_ap} (bbox AP: {best_bbox_ap:.4f})"
+            )
+
     # Save final metrics summary
     summary = {
+        "best_val_loss": float(best_val_loss),
         "best_bbox_AP": float(best_bbox_ap),
         "epochs_trained": epoch,
+        "best_epoch": best_epoch,
+        "history": history,
     }
     with open(out / "training_summary.json", "w") as f:
         json.dump(summary, f, indent=2)

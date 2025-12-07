@@ -9,6 +9,7 @@ from pycocotools import mask as maskUtils
 from skimage.measure import find_contours
 from tqdm import tqdm
 
+
 def rle_to_polygons(in_json_path: Path, out_json_path: Path):
     """Convert COCO RLE segmentations to polygon segmentations."""
     with open(in_json_path, "r") as f:
@@ -43,6 +44,23 @@ def rle_to_polygons(in_json_path: Path, out_json_path: Path):
         ann["segmentation"] = polygons
         ann["iscrowd"] = 0
 
+    # Normalize category IDs to be 1-based contiguous
+    # This ensures ultralytics convert_coco maps them to 0-based contiguous (0, 1, 2...)
+    cat_id_map = {}
+    new_cats = []
+    for idx, cat in enumerate(sorted(coco["categories"], key=lambda x: x["id"])):
+        old_id = cat["id"]
+        new_id = idx + 1
+        cat_id_map[old_id] = new_id
+        cat["id"] = new_id
+        new_cats.append(cat)
+    coco["categories"] = new_cats
+
+    # Update annotations
+    for ann in coco["annotations"]:
+        if "category_id" in ann and ann["category_id"] in cat_id_map:
+            ann["category_id"] = cat_id_map[ann["category_id"]]
+
     with open(out_json_path, "w") as f:
         json.dump(coco, f)
 
@@ -70,8 +88,11 @@ if __name__ == "__main__":
     # 0. Paths
     # ------------------------------------------------------------------
     current_dir = Path(__file__).parent
-    root_coco = current_dir / "image_envy_5000_coco"
-    root_yolo = current_dir / "image_envy_5000_yolo"
+    dataset_dir = current_dir.parent / "datasets"
+    # root_coco = dataset_dir / "image_envy_5000_coco"
+    # root_yolo = dataset_dir / "image_envy_5000_yolo"
+    root_coco = dataset_dir / "Fuji-Apple-Segmentation_coco"
+    root_yolo = dataset_dir / "Fuji-Apple-Segmentation_yolo"
 
     # 'trainingset' -> train, 'testset' -> val
     splits = {

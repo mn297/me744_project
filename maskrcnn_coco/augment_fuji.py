@@ -15,19 +15,29 @@ DATASETS_DIR = BASE_DIR / "datasets"
 # Source Datasets
 # We use Fuji U-Net NPY files for easy apple extraction
 FUJI_UNET_DIR = DATASETS_DIR / "Fuji-Apple-Segmentation_unet"
-FUJI_IMGS_DIR = FUJI_UNET_DIR / "np_imgs_train"
-FUJI_SEGS_DIR = FUJI_UNET_DIR / "np_segs_train"
 
-ENVY_RAW_DIR = DATASETS_DIR / "image_envy_5000"
+
+ENVY_DIR = DATASETS_DIR / "image_envy_5000"
 
 # Output Dataset
 OUTPUT_DIR = DATASETS_DIR / "Fuji-Apple-Segmentation_with_envy_mask_coco"
 
 # Configuration
-NUM_ENVY_IMAGES = 100
+NUM_ENVY_IMAGES = 500
 TRAIN_SPLIT = 0.8
 MIN_FRUITS = 0
-MAX_FRUITS = 12
+MAX_FRUITS = 20
+
+color_dict = {
+    "trunk": [255, 0, 0, 255],
+    "trunk_2": [255, 1, 1, 255],
+    # "trunk_3": [0, 137, 137, 255],
+    # "trunk_4": [1, 137, 137, 255],
+    "branches": [255, 255, 0, 255],
+    "branches_2": [255, 255, 1, 255],
+    "branches_3": [0, 255, 0, 255],
+    "branches_4": [1, 255, 1, 255],
+}
 
 
 def setup_output_dir():
@@ -35,21 +45,42 @@ def setup_output_dir():
         print(f"Removing existing output directory: {OUTPUT_DIR}")
         shutil.rmtree(OUTPUT_DIR)
 
-    print(f"Copying Fuji dataset to {OUTPUT_DIR}...")
-    # We copy the original Fuji COCO dataset as a base
-    shutil.copytree(DATASETS_DIR / "Fuji-Apple-Segmentation_coco", OUTPUT_DIR)
+    OUTPUT_DIR.mkdir(parents=True)
+
+    # Create empty COCO structure
+    for split in ["trainingset", "testset"]:
+        (OUTPUT_DIR / split / "JPEGImages").mkdir(parents=True)
+        # Initialize empty annotations file
+        with open(OUTPUT_DIR / split / "annotations.json", "w") as f:
+            json.dump(
+                {
+                    "images": [],
+                    "annotations": [],
+                    "categories": [
+                        {"id": 1, "name": "apple", "supercategory": "fruit"}
+                    ],
+                },
+                f,
+                indent=2,
+            )
 
 
 def get_envy_images():
-    all_files = list(ENVY_RAW_DIR.glob("*_rgb_*.png"))
+    all_files = list(ENVY_DIR.glob("*_rgb_*.png"))
     rgb_files = [f for f in all_files if "_label_" not in f.name]
-    return sorted(rgb_files)
+    seg_files = [
+        f for f in all_files if "_label_" in f.name and "_depth_" not in f.name
+    ]
+    # exclude first 1000 files
+    rgb_files = sorted(rgb_files)[2000:5000]
+    seg_files = sorted(seg_files)[2000:5000]
+    return rgb_files, seg_files
 
 
-def get_fuji_samples() -> list[tuple[Path, Path]]:
+def get_fuji_samples(img_dir: Path, seg_dir: Path) -> list[tuple[Path, Path]]:
     """Return list of (img_path, seg_path) tuples."""
-    imgs = sorted(list(FUJI_IMGS_DIR.glob("*.npy")))
-    segs = sorted(list(FUJI_SEGS_DIR.glob("*.npy")))
+    imgs = sorted(list(img_dir.glob("*.npy")))
+    segs = sorted(list(seg_dir.glob("*.npy")))
     return list(zip(imgs, segs))
 
 
@@ -70,8 +101,11 @@ def mask_to_polygons(mask: np.ndarray) -> list[list[float]]:
 def augment_dataset(
     json_path: Path,
     img_dir: Path,
-    envy_files: list[Path],
+    envy_img_lst: list[Path],
+    envy_seg_lst: list[Path],
     fuji_samples: list[tuple[Path, Path]],
+    unet_img_dir: Path,
+    unet_seg_dir: Path,
 ):
     """
     Augment dataset by pasting Fuji apples onto Envy backgrounds.
@@ -91,11 +125,19 @@ def augment_dataset(
         max_ann_id = max(ann["id"] for ann in data["annotations"])
     current_ann_id = max_ann_id + 1
 
-    for envy_path in tqdm(envy_files, desc=f"Augmenting {json_path.parent.name}"):
+    for envy_img, envy_seg in tqdm(
+        zip(envy_img_lst, envy_seg_lst),
+        desc=f"Augmenting {json_path.parent.name}",
+        total=len(envy_img_lst),
+    ):
         # 1. Load Envy Background
         # Convert to numpy RGB
-        with Image.open(envy_path) as bg_pil:
-            bg_img = np.array(bg_pil.convert("RGB"))
+        try:
+            with Image.open(envy_img) as bg_pil:
+                bg_img = np.array(bg_pil.convert("RGB"))
+        except (OSError, SyntaxError) as e:
+            print(f"Skipping corrupt image: {envy_img} ({e})")
+            continue
 
         bg_h, bg_w = bg_img.shape[:2]
 
@@ -104,6 +146,7 @@ def augment_dataset(
 
         # Keep track of annotations for this image
         new_annotations = []
+        full_mask = np.zeros((bg_h, bg_w), dtype=np.uint8)
 
         for _ in range(num_apples):
             # 3. Pick random Fuji sample
@@ -160,10 +203,13 @@ def augment_dataset(
 
             # 6. Create Annotation
             # Create a full-sized mask for this new object to extract polygon
-            full_mask = np.zeros((bg_h, bg_w), dtype=np.uint8)
+            apple_mask = np.zeros((bg_h, bg_w), dtype=np.uint8)
+            apple_mask[pos_y : pos_y + h, pos_x : pos_x + w] = mask_crop.astype(
+                np.uint8
+            )
             full_mask[pos_y : pos_y + h, pos_x : pos_x + w] = mask_crop.astype(np.uint8)
 
-            polygons = mask_to_polygons(full_mask)
+            polygons = mask_to_polygons(apple_mask)
             if not polygons:
                 continue
 
@@ -184,8 +230,57 @@ def augment_dataset(
             )
             current_ann_id += 1
 
-        # 7. Save augmented image
-        new_filename = f"aug_{envy_path.stem}.jpg"
+        # save envy seg to unet format
+        # construct unet format for testset
+        gt_key = envy_seg.stem.split("_")[0]
+        im_key = envy_img.stem.split("_")[0]
+        assert (
+            gt_key == im_key
+        ), f"Label/image mismatch: {envy_seg.name} vs {envy_img.name}"
+
+        annot = np.asarray(Image.open(envy_seg))
+        assert np.all(annot[:, :, 3] == 255)
+        annot = annot[:, :, :3]  # ignore alpha
+        im_cur = np.asarray(Image.open(envy_img))
+        assert np.all(im_cur[:, :, 3] == 255)
+        im_cur = im_cur[:, :, :3]  # ignore alpha
+        # all_labels = np.unique(annot.reshape(annot.shape[0] * annot.shape[1], 3), axis=0, return_counts=True)
+        # print(annotation_filename)
+        # print(annot.shape)
+        # print(all_labels)
+        # print(annot.shape)
+        masks = []
+        matches = []
+        for col in color_dict.values():
+            matches.append(np.all(annot == col[:3], axis=-1))
+        masks.append(np.logical_or.reduce(matches))
+        masks = np.stack(masks, axis=0).astype(np.uint8)
+        assert np.max(np.sum(masks, axis=0)) == 1
+        label_map = np.zeros((annot.shape[0], annot.shape[1]), dtype=np.uint8)
+        for cur_label in range(masks.shape[0]):
+            label_map[masks[cur_label] > 0] = 1
+
+        # zero the label map where the full_mask is 1
+        # This treats pasted Fuji apples as background (class 0) in the Envy mask
+        # label_map[full_mask > 0] = 0
+
+        # However, for the U-Net training, we probably want the pasted apples to be class 1 (apple)
+        # The original Fuji apples are class 1.
+        # The Envy background (trunk/branches) is class 2.
+        # The Envy background (sky/ground) is class 0.
+        # So we should actually set the pasted apple regions to 0 to consider it as background in the context of U-Net training
+        label_map[full_mask > 0] = 2
+
+        seg_out = unet_seg_dir / f"{envy_img.stem}.npy"
+        img_out = unet_img_dir / f"{envy_img.stem}.npy"
+
+        np.save(seg_out, label_map.astype(np.uint8))
+        np.save(
+            img_out, bg_img
+        )  # Save the AUGMENTED image (bg_img), not the original Envy image (im_cur)
+
+        # 7. Save augmented image (JPEG for COCO)
+        new_filename = f"aug_{envy_img.stem}.jpg"
         save_path = img_dir / new_filename
 
         # Save as JPEG
@@ -217,34 +312,81 @@ def main():
 
     setup_output_dir()
 
-    envy_images = get_envy_images()
-    fuji_samples = get_fuji_samples()
+    envy_images, envy_labels = get_envy_images()
+
+    fuji_train_imgs = FUJI_UNET_DIR / "np_imgs_train"
+    fuji_train_segs = FUJI_UNET_DIR / "np_segs_train"
+    fuji_val_imgs = FUJI_UNET_DIR / "np_imgs_val"
+    fuji_val_segs = FUJI_UNET_DIR / "np_segs_val"
+
+    fuji_train_samples = get_fuji_samples(fuji_train_imgs, fuji_train_segs)
+    fuji_val_samples = get_fuji_samples(fuji_val_imgs, fuji_val_segs)
 
     print(f"Found {len(envy_images)} Envy images")
-    print(f"Found {len(fuji_samples)} Fuji training samples for extraction")
+    print(f"Found {len(fuji_train_samples)} Fuji training samples")
+    print(f"Found {len(fuji_val_samples)} Fuji validation samples")
 
     # Selection
     if len(envy_images) < NUM_ENVY_IMAGES:
         selected_envy = envy_images
     else:
-        random.seed(42)
+        random.seed(69)
         selected_envy = random.sample(envy_images, NUM_ENVY_IMAGES)
 
     num_train = int(len(selected_envy) * TRAIN_SPLIT)
-    train_envy = selected_envy[:num_train]
-    test_envy = selected_envy[num_train:]
-
-    print(f"Augmenting with {len(train_envy)} train and {len(test_envy)} test images")
+    train_envy_img_lst = selected_envy[:num_train]
+    train_envy_seg_lst = [
+        ENVY_DIR / img.name.replace("_rgb_", "_label_rgb_")
+        for img in train_envy_img_lst
+    ]
+    test_envy_img_lst = selected_envy[num_train:]
+    test_envy_seg_lst = [
+        ENVY_DIR / img.name.replace("_rgb_", "_label_rgb_") for img in test_envy_img_lst
+    ]
+    print(
+        f"Augmenting with {len(train_envy_img_lst)} train and {len(test_envy_img_lst)} test images"
+    )
 
     # Train
+    unet_train_img_dir = OUTPUT_DIR / "np_imgs_train"
+    unet_train_seg_dir = OUTPUT_DIR / "np_segs_train"
+    unet_test_seg_dir = OUTPUT_DIR / "np_segs_val"
     train_json = OUTPUT_DIR / "trainingset" / "annotations.json"
     train_img_dir = OUTPUT_DIR / "trainingset" / "JPEGImages"
-    augment_dataset(train_json, train_img_dir, train_envy, fuji_samples)
 
-    # Test
+    unet_test_img_dir = OUTPUT_DIR / "np_imgs_val"
+    unet_test_seg_dir = OUTPUT_DIR / "np_segs_val"
     test_json = OUTPUT_DIR / "testset" / "annotations.json"
     test_img_dir = OUTPUT_DIR / "testset" / "JPEGImages"
-    augment_dataset(test_json, test_img_dir, test_envy, fuji_samples)
+
+    if not unet_train_seg_dir.exists():
+        unet_train_img_dir.mkdir(parents=True, exist_ok=True)
+    if not unet_train_seg_dir.exists():
+        unet_train_seg_dir.mkdir(parents=True, exist_ok=True)
+    if not unet_test_seg_dir.exists():
+        unet_test_img_dir.mkdir(parents=True, exist_ok=True)
+    if not unet_test_seg_dir.exists():
+        unet_test_seg_dir.mkdir(parents=True, exist_ok=True)
+
+    augment_dataset(
+        train_json,
+        train_img_dir,
+        train_envy_img_lst,
+        train_envy_seg_lst,
+        fuji_train_samples,
+        unet_train_img_dir,
+        unet_train_seg_dir,
+    )
+
+    augment_dataset(
+        test_json,
+        test_img_dir,
+        test_envy_img_lst,
+        test_envy_seg_lst,
+        fuji_val_samples,
+        unet_test_img_dir,
+        unet_test_seg_dir,
+    )
 
     print("\n=== Done! ===")
 

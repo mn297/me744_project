@@ -30,9 +30,9 @@ optimization:
 # Output configuration
 output:
   checkpoint_dir: "datasets/checkpoints/image_envy_5000_coco"
-  output_dir: "datasets/visualizations/image_envy_5000_coco"
+  output_dir: "datasets/predictions/image_envy_5000_coco"
   log_dir: "runs/maskrcnn/image_envy_5000_coco"
-  experiment_name: "maskrcnn_envy_apples"
+  experiment_name: "maskrcnn_envy"
 
 # MLOps configuration
 mlops:

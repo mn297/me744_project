@@ -7,37 +7,7 @@ from tqdm import tqdm
 import numpy as np
 import cv2
 from scipy.ndimage import label as scipy_label
-
-# Paths
-BASE_DIR = Path(__file__).parent.parent
-DATASETS_DIR = BASE_DIR / "datasets"
-
-# Source Datasets
-# We use Fuji U-Net NPY files for easy apple extraction
-FUJI_UNET_DIR = DATASETS_DIR / "Fuji-Apple-Segmentation_unet"
-
-
-ENVY_DIR = DATASETS_DIR / "image_envy_5000"
-
-# Output Dataset
-OUTPUT_DIR = DATASETS_DIR / "Fuji-Apple-Segmentation_with_envy_mask_coco"
-
-# Configuration
-NUM_ENVY_IMAGES = 500
-TRAIN_SPLIT = 0.8
-MIN_FRUITS = 0
-MAX_FRUITS = 20
-
-color_dict = {
-    "trunk": [255, 0, 0, 255],
-    "trunk_2": [255, 1, 1, 255],
-    # "trunk_3": [0, 137, 137, 255],
-    # "trunk_4": [1, 137, 137, 255],
-    "branches": [255, 255, 0, 255],
-    "branches_2": [255, 255, 1, 255],
-    "branches_3": [0, 255, 0, 255],
-    "branches_4": [1, 255, 1, 255],
-}
+from pycocotools import mask as maskUtils
 
 
 def setup_output_dir():
@@ -57,7 +27,8 @@ def setup_output_dir():
                     "images": [],
                     "annotations": [],
                     "categories": [
-                        {"id": 1, "name": "apple", "supercategory": "fruit"}
+                        {"id": 1, "name": "apple", "supercategory": "fruit"},
+                        # {"id": 2, "name": "branches", "supercategory": "tree"},
                     ],
                 },
                 f,
@@ -148,6 +119,7 @@ def augment_dataset(
         new_annotations = []
         full_mask = np.zeros((bg_h, bg_w), dtype=np.uint8)
 
+        # Apple mask
         for _ in range(num_apples):
             # 3. Pick random Fuji sample
             f_img_path, f_seg_path = random.choice(fuji_samples)
@@ -238,67 +210,102 @@ def augment_dataset(
             gt_key == im_key
         ), f"Label/image mismatch: {envy_seg.name} vs {envy_img.name}"
 
+        # Load Envy segmentation and create label map:
+        # Class 0: Background (sky/ground)
+        # Class 1: Pasted Fuji apples
+        # Class 2: Envy trunk/branches
         annot = np.asarray(Image.open(envy_seg))
         assert np.all(annot[:, :, 3] == 255)
-        annot = annot[:, :, :3]  # ignore alpha
-        im_cur = np.asarray(Image.open(envy_img))
-        assert np.all(im_cur[:, :, 3] == 255)
-        im_cur = im_cur[:, :, :3]  # ignore alpha
-        # all_labels = np.unique(annot.reshape(annot.shape[0] * annot.shape[1], 3), axis=0, return_counts=True)
-        # print(annotation_filename)
-        # print(annot.shape)
-        # print(all_labels)
-        # print(annot.shape)
-        masks = []
-        matches = []
+        annot = annot[:, :, :3]  # Remove alpha channel
+
+        # unet masks
+        trunk_branch_mask = np.zeros(annot.shape[:2], dtype=bool)
         for col in color_dict.values():
-            matches.append(np.all(annot == col[:3], axis=-1))
-        masks.append(np.logical_or.reduce(matches))
-        masks = np.stack(masks, axis=0).astype(np.uint8)
-        assert np.max(np.sum(masks, axis=0)) == 1
+            trunk_branch_mask |= np.all(annot == col[:3], axis=-1)
+        # Apples should overwrite branches, so we exclude apple areas from branch annotations
+        branch_mask_excluding_apples = trunk_branch_mask & (full_mask == 0)
         label_map = np.zeros((annot.shape[0], annot.shape[1]), dtype=np.uint8)
-        for cur_label in range(masks.shape[0]):
-            label_map[masks[cur_label] > 0] = 1
-
-        # zero the label map where the full_mask is 1
-        # This treats pasted Fuji apples as background (class 0) in the Envy mask
-        # label_map[full_mask > 0] = 0
-
-        # However, for the U-Net training, we probably want the pasted apples to be class 1 (apple)
-        # The original Fuji apples are class 1.
-        # The Envy background (trunk/branches) is class 2.
-        # The Envy background (sky/ground) is class 0.
-        # So we should actually set the pasted apple regions to 0 to consider it as background in the context of U-Net training
-        label_map[full_mask > 0] = 2
-
+        label_map[trunk_branch_mask] = 2
+        label_map[full_mask > 0] = 1
         seg_out = unet_seg_dir / f"{envy_img.stem}.npy"
         img_out = unet_img_dir / f"{envy_img.stem}.npy"
-
         np.save(seg_out, label_map.astype(np.uint8))
-        np.save(
-            img_out, bg_img
-        )  # Save the AUGMENTED image (bg_img), not the original Envy image (im_cur)
-
-        # 7. Save augmented image (JPEG for COCO)
+        np.save(img_out, bg_img)
         new_filename = f"aug_{envy_img.stem}.jpg"
         save_path = img_dir / new_filename
 
-        # Save as JPEG
         Image.fromarray(bg_img).save(save_path, quality=95)
+
+        # branches masks coco
+        # Recalculate area and bbox from mask
+        mask = np.zeros(annot.shape[:2], dtype=np.uint8)
+        mask[branch_mask_excluding_apples] = 1
+        rle = maskUtils.encode(np.asfortranarray(mask))
+
+        # Decode bytes to string for JSON serialization
+        if isinstance(rle["counts"], bytes):
+            rle["counts"] = rle["counts"].decode("ascii")
+
+        area = float(maskUtils.area(rle))
+        bbox = [float(x) for x in maskUtils.toBbox(rle)]
+
+        # new_annotations.append(
+        #     {
+        #         "id": current_ann_id,
+        #         "image_id": current_id,
+        #         "category_id": 2,  # Branches
+        #         "segmentation": rle,
+        #         "area": area,
+        #         "bbox": bbox,
+        #         "iscrowd": 0,
+        #     }
+        # )
+        # current_ann_id += 1
+
+        data["annotations"].extend(new_annotations)
 
         # 8. Add Image entry to JSON
         data["images"].append(
             {"id": current_id, "file_name": new_filename, "width": bg_w, "height": bg_h}
         )
 
-        # Add annotations
-        data["annotations"].extend(new_annotations)
-
         current_id += 1
 
     # Save JSON
     with open(json_path, "w") as f:
         json.dump(data, f, indent=2)
+
+
+# Paths
+BASE_DIR = Path(__file__).parent.parent
+DATASETS_DIR = BASE_DIR / "datasets"
+
+# Source Datasets
+# We use Fuji U-Net NPY files for easy apple extraction
+FUJI_UNET_DIR = DATASETS_DIR / "Fuji-Apple-Segmentation_unet"
+
+
+ENVY_DIR = DATASETS_DIR / "image_envy_5000"
+
+# Output Dataset
+OUTPUT_DIR = DATASETS_DIR / "Fuji-Apple-Segmentation_with_envy_mask_coco"
+
+# Configuration
+NUM_ENVY_IMAGES = 500
+TRAIN_SPLIT = 0.8
+MIN_FRUITS = 0
+MAX_FRUITS = 20
+
+color_dict = {
+    "trunk": [255, 0, 0, 255],
+    "trunk_2": [255, 1, 1, 255],
+    # "trunk_3": [0, 137, 137, 255],
+    # "trunk_4": [1, 137, 137, 255],
+    "branches": [255, 255, 0, 255],
+    "branches_2": [255, 255, 1, 255],
+    "branches_3": [0, 255, 0, 255],
+    "branches_4": [1, 255, 1, 255],
+}
 
 
 def main():

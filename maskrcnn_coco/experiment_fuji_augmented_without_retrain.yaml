@@ -30,7 +30,7 @@ optimization:
 # Output configuration
 output:
   checkpoint_dir: "datasets/checkpoints/Fuji-Apple-Segmentation"
-  output_dir: "datasets/visualizations/Fuji-Apple-Segmentation-Augmented-Without-Retrain"
+  output_dir: "datasets/predictions/Fuji-Apple-Segmentation-Augmented-Without-Retrain"
   log_dir: "runs/maskrcnn/Fuji-Apple-Segmentation-Augmented-Without-Retrain"
   experiment_name: "maskrcnn_fuji_augmented_without_retrain"
 

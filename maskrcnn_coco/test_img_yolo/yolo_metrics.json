@@ -1,0 +1,34 @@
+{
+    "metadata": {
+        "model": "YOLO",
+        "weights": "C:\\Users\\john\\Documents\\programming_dirty\\me744_project\\datasets\\checkpoints\\yolo\\train\\weights\\best.pt",
+        "conf": 0.5,
+        "source": "test_img_yolo",
+        "timestamp": "20251207_225312",
+        "run_name": "inference_20251207_225312_best"
+    },
+    "average": {
+        "class_0": {
+            "average_iou": 0.0,
+            "average_dice": 0.0,
+            "valid_images": 0
+        },
+        "class_1": {
+            "average_iou": 0.0,
+            "average_dice": 0.0,
+            "valid_images": 0
+        }
+    },
+    "per_file": {
+        "aug_2102_rgb_0001.jpg": {
+            "class_0": {
+                "iou": -1.0,
+                "dice": -1.0
+            },
+            "class_1": {
+                "iou": -1.0,
+                "dice": -1.0
+            }
+        }
+    }
+}

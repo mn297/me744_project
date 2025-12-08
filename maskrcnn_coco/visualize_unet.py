@@ -79,7 +79,6 @@ def visualize_samples(base_dir, split="train", num_samples=5):
 
 def main():
     base_dir = (
-        # Path(__file__).parent.parent / "datasets" / "Fuji-Apple-Segmentation_unet"
         Path(__file__).parent.parent
         / "datasets"
         / "Fuji-Apple-Segmentation_with_envy_mask_coco"

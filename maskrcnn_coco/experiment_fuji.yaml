@@ -30,9 +30,9 @@ optimization:
 # Output configuration
 output:
   checkpoint_dir: "datasets/checkpoints/Fuji-Apple-Segmentation"
-  output_dir: "datasets/visualizations/Fuji-Apple-Segmentation"
+  output_dir: "datasets/predictions/Fuji-Apple-Segmentation"
   log_dir: "runs/maskrcnn/Fuji-Apple-Segmentation"
-  experiment_name: "maskrcnn_fuji_apples"
+  experiment_name: "maskrcnn_fuji"
 
 # MLOps configuration
 mlops:

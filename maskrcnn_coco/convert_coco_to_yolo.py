@@ -3,7 +3,7 @@ from pathlib import Path
 import shutil
 import yaml
 import json
-
+import cv2
 import numpy as np
 from pycocotools import mask as maskUtils
 from skimage.measure import find_contours
@@ -11,60 +11,75 @@ from tqdm import tqdm
 
 
 def rle_to_polygons(in_json_path: Path, out_json_path: Path):
-    """Convert COCO RLE segmentations to polygon segmentations."""
     with open(in_json_path, "r") as f:
         coco = json.load(f)
 
+    new_annotations = []
+    next_ann_id = max([a.get("id", 0) for a in coco["annotations"]], default=0) + 1
+    print("Processing and splitting disjoint masks...")
+
     for ann in tqdm(coco["annotations"]):
         seg = ann.get("segmentation", None)
-
-        # already polygon format
-        if isinstance(seg, list):
+        if seg is None:
             continue
 
-        # seg is RLE dict: {"size":[h,w], "counts": "..."}
-        rle = seg
-        mask = maskUtils.decode(rle)  # H x W or H x W x 1
-        # print("mask.shape:", mask.shape)
+        # Already polygons: keep but ensure unique IDs
+        if isinstance(seg, list):
+            new_ann = ann.copy()
+            new_ann["id"] = next_ann_id
+            new_ann["iscrowd"] = 0
+            new_annotations.append(new_ann)
+            next_ann_id += 1
+            continue
 
+        # Decode RLE
+        mask = maskUtils.decode(seg)
         if mask.ndim == 3:
             mask = mask[:, :, 0]
-        mask = mask.astype(np.uint8)
 
-        contours = find_contours(mask, 0.5)
+        # Fix potential inversion (background mostly ones)
+        if mask.mean() > 0.5:
+            mask = 1 - mask
 
-        polygons = []
+        mask = (mask * 255).astype(np.uint8)
+
+        # Pad to avoid contour wrapping at borders
+        mask_padded = cv2.copyMakeBorder(mask, 1, 1, 1, 1, cv2.BORDER_CONSTANT, value=0)
+
+        contours, _ = cv2.findContours(
+            mask_padded, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+
+        # allow for multiple polygons per annotation
         for c in contours:
-            # c is (N, 2) in (row, col) = (y, x)
-            c = np.flip(c, axis=1)  # to (x, y)
-            poly = c.ravel().tolist()
-            if len(poly) >= 6:  # at least 3 points
-                polygons.append(poly)
+            epsilon = 0.001 * cv2.arcLength(c, True)
+            c_smooth = cv2.approxPolyDP(c, epsilon, True)
+            c_final = c_smooth - 1  # remove padding offset
+            poly = c_final.flatten().tolist()
 
-        ann["segmentation"] = polygons
-        ann["iscrowd"] = 0
+            if len(poly) >= 6:
+                pts = np.array(poly).reshape(-1, 2)
+                x_min, y_min = pts.min(axis=0)
+                x_max, y_max = pts.max(axis=0)
+                w_box, h_box = x_max - x_min, y_max - y_min
 
-    # Normalize category IDs to be 1-based contiguous
-    # This ensures ultralytics convert_coco maps them to 0-based contiguous (0, 1, 2...)
-    cat_id_map = {}
-    new_cats = []
-    for idx, cat in enumerate(sorted(coco["categories"], key=lambda x: x["id"])):
-        old_id = cat["id"]
-        new_id = idx + 1
-        cat_id_map[old_id] = new_id
-        cat["id"] = new_id
-        new_cats.append(cat)
-    coco["categories"] = new_cats
+                new_ann = ann.copy()
+                new_ann["segmentation"] = [poly]  # one polygon per annotation
+                new_ann["bbox"] = [
+                    float(x_min),
+                    float(y_min),
+                    float(w_box),
+                    float(h_box),
+                ]
+                new_ann["id"] = next_ann_id
+                new_ann["iscrowd"] = 0
+                new_annotations.append(new_ann)
+                next_ann_id += 1
 
-    # Update annotations
-    for ann in coco["annotations"]:
-        if "category_id" in ann and ann["category_id"] in cat_id_map:
-            ann["category_id"] = cat_id_map[ann["category_id"]]
+    coco["annotations"] = new_annotations
 
     with open(out_json_path, "w") as f:
         json.dump(coco, f)
-
-    print(f"Saved polygon COCO to {out_json_path}")
     return out_json_path
 
 
@@ -93,6 +108,8 @@ if __name__ == "__main__":
     # root_yolo = dataset_dir / "image_envy_5000_yolo"
     root_coco = dataset_dir / "Fuji-Apple-Segmentation_coco"
     root_yolo = dataset_dir / "Fuji-Apple-Segmentation_yolo"
+    root_coco = dataset_dir / "Fuji-Apple-Segmentation_with_envy_mask_coco"
+    root_yolo = dataset_dir / "Fuji-Apple-Segmentation_with_envy_mask_yolo"
 
     # 'trainingset' -> train, 'testset' -> val
     splits = {

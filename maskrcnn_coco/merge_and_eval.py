@@ -8,10 +8,62 @@ import numpy as np
 import torch
 
 
-rcnn_out = sorted(glob.glob(os.path.join("/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/visualizations/mixed/test_on_good_mix/rcnn_out", "*.pkl"), recursive=True))
-unet_out = sorted(glob.glob(os.path.join("/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/visualizations/mixed/test_on_good_mix/results", "*.npy"), recursive=True))
-gt_semantic = sorted(glob.glob(os.path.join("/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/visualizations/mixed/test_on_good_mix/gt", "*.npy"), recursive=True))
+rcnn_out = sorted(
+    glob.glob(
+        os.path.join(
+            "/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/visualizations/mixed/test_on_good_mix/rcnn_out",
+            "*.pkl",
+        ),
+        recursive=True,
+    )
+)
+unet_out = sorted(
+    glob.glob(
+        os.path.join(
+            "/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/visualizations/mixed/test_on_good_mix/results",
+            "*.npy",
+        ),
+        recursive=True,
+    )
+)
+gt_semantic = sorted(
+    glob.glob(
+        os.path.join(
+            "/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/visualizations/mixed/test_on_good_mix/gt",
+            "*.npy",
+        ),
+        recursive=True,
+    )
+)
 
+
+rcnn_out = sorted(
+    glob.glob(
+        os.path.join(
+            "C:/Users/john/Documents/programming_dirty/me744_project/datasets/predictions/Fuji-Apple-Segmentation-Augmented",
+            "*.pkl",
+        ),
+        recursive=True,
+    )
+)
+unet_out = sorted(
+    glob.glob(
+        os.path.join(
+            "C:/Users/john/Documents/programming_dirty/me744_project/datasets/predictions/unet_baseline",
+            "*.npy",
+        ),
+        recursive=True,
+    )
+)
+gt_semantic = sorted(
+    glob.glob(
+        os.path.join(
+            "C:/Users/john/Documents/programming_dirty/me744_project/datasets/Fuji-Apple-Segmentation_with_envy_mask_coco/np_segs_val",
+            "*.npy",
+        ),
+        recursive=True,
+    )
+)
 
 # rcnn_out = sorted(glob.glob(os.path.join("/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/mixed/test_common/mixed_training/rcnn_out", "*.pkl"), recursive=True))
 # unet_out = sorted(glob.glob(os.path.join("/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/mixed/test_common/mixed_training/results", "*.npy"), recursive=True))
@@ -21,8 +73,11 @@ gt_semantic = sorted(glob.glob(os.path.join("/Users/ziyaoshang/Desktop/MEproject
 num_classes = 3  # background, non-fruit, fruit
 save_seg = True
 seg_save_path = "/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/visualizations/mixed/test_on_good_mix/merged"
+seg_save_path = "C:/Users/john/Documents/programming_dirty/me744_project/datasets/predictions/merged"
 
-assert len(rcnn_out) == len(unet_out) == len(gt_semantic), f"Mismatched number of files, {len(rcnn_out), len(unet_out), len(gt_semantic)}"
+assert (
+    len(rcnn_out) == len(unet_out) == len(gt_semantic)
+), f"Mismatched number of files, {len(rcnn_out), len(unet_out), len(gt_semantic)}"
 
 ious_all = []
 dice_all = []
@@ -51,18 +106,26 @@ for i, (r, u, g) in enumerate(zip(rcnn_out, unet_out, gt_semantic)):
         # merge semantic masks
         r_mask = np.max(r_mask, axis=0)
         assert (len(np.unique(r_mask)) <= 2) and (np.max(r_mask) == 1)
-        merged_mask[r_mask != 0] = 2  # all fruits
         
+        # Set Branches (2) from UNet
+        merged_mask[u_mask == 1] = 2
+        
+        # Set Apples (1) from R-CNN
+        merged_mask[r_mask != 0] = 1  # all fruits
 
     # save the merged mask as a npy file
     if save_seg:
-        out_filename = os.path.join(seg_save_path, os.path.basename(u).replace('.npy', '_merged.npy'))
+        if not os.path.exists(seg_save_path):
+            os.makedirs(seg_save_path)
+        out_filename = os.path.join(
+            seg_save_path, os.path.basename(u).replace(".npy", "_merged.npy")
+        )
         np.save(out_filename, merged_mask.astype(np.uint8))
         print(f"Saved merged mask to {out_filename}")
 
     # calculate multi-class mIoU and Dice
     gt_mask = np.load(g)
-    assert merged_mask.shape == gt_mask.shape   
+    assert merged_mask.shape == gt_mask.shape
     ious = []
     dices = []
     for cls in range(num_classes):
@@ -80,14 +143,15 @@ for i, (r, u, g) in enumerate(zip(rcnn_out, unet_out, gt_semantic)):
         ious.append(iou_score)
         # print(np.sum(intersection))
         # print(np.sum(np.sum(union)))
-         
 
         if np.sum(pred_cls) + np.sum(gt_cls) == 0:
             dice_score = 1.0  # both pred and gt are empty
         else:
             dice_score = 2 * np.sum(intersection) / (np.sum(pred_cls) + np.sum(gt_cls))
         dices.append(dice_score)
-        print(f"Image {i}, Class {cls}: mIoU = {iou_score:.4f}, Dice = {dice_score:.4f}")
+        print(
+            f"Image {i}, Class {cls}: mIoU = {iou_score:.4f}, Dice = {dice_score:.4f}"
+        )
 
     ious_all.append(ious)
     dice_all.append(dices)
@@ -115,8 +179,3 @@ print("Mean mIoU per image (no background):", mean_ious_per_image)
 print("Mean Dice per image (no background):", mean_dices_per_image)
 print("Overall Mean mIoU (no background):", mean_mious)
 print("Overall Mean Dice (no background):", mean_dices_avg)
-
-
-
-
-

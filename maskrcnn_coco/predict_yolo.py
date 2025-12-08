@@ -160,13 +160,13 @@ def evaluate_directory(
         if res.masks is None:
             continue
 
-        pred_masks_all = res.masks.data.cpu().numpy() > 0.5
+        pred_masks_all = res.masks.data.cpu().numpy()
         # Resize predicted masks back to original image size
         resized_pred_masks = []
         for pmask in pred_masks_all:
             pm_resized = cv2.resize(
-                pmask.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST
-            ).astype(bool)
+                pmask, (w, h), interpolation=cv2.INTER_LINEAR
+            ) > 0.5
             resized_pred_masks.append(pm_resized)
         pred_masks_all = (
             np.stack(resized_pred_masks, axis=0)

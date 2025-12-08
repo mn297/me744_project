@@ -17,6 +17,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 UNET_ROOT = PROJECT_ROOT / "unet" / "Pytorch-UNet"
 sys.path.append(str(UNET_ROOT))
 
+GT_INDEX_VALUE = 2
 try:
     from unet import UNet
     from utils.data_loading import BasicDataset
@@ -48,8 +49,9 @@ def compute_metrics(pred_mask: np.ndarray, gt_mask: np.ndarray):
     pred_mask, gt_mask: boolean or 0/1 arrays
     """
     # Ensure binary
-    pred = pred_mask > 0
-    gt = gt_mask > 0
+    pred = pred_mask == 1
+    # CHANGEHERE DEPENDING ON THE GT LABELS, SOMETIMES 1, SOMETIMES 2
+    gt = gt_mask == GT_INDEX_VALUE
 
     if not np.any(gt):
         return -1.0, -1.0
@@ -118,7 +120,7 @@ def save_visualization(img_np, pred_mask, gt_mask, output_path, iou=None, dice=N
         axes[1].imshow(display_img)
         # Overlay GT in Green
         overlay_gt = np.zeros((*gt_mask.shape, 4))
-        overlay_gt[gt_mask == 2] = [0, 1, 0, 0.4]  # Green, alpha 0.4
+        overlay_gt[gt_mask == GT_INDEX_VALUE] = [0, 1, 0, 0.4]  # Green, alpha 0.4
         axes[1].imshow(overlay_gt)
         axes[1].set_title("Ground Truth")
         axes[1].axis("off")
@@ -190,9 +192,13 @@ def main():
             else:
                 mask_dir = None  # No GT or custom folder
     else:
-        # Default to the dataset mentioned
         source_dir = (
-            PROJECT_ROOT / "datasets" / "Fuji-Apple-Segmentation_with_envy_mask_coco"
+            PROJECT_ROOT
+            / "datasets"
+            / "Fuji-Apple-Segmentation_with_envy_mask_coco"
+            # PROJECT_ROOT
+            # / "datasets"
+            # / "image_envy_5000_unet"
         )
         img_dir = source_dir / "np_imgs_val"
         mask_dir = source_dir / "np_segs_val"

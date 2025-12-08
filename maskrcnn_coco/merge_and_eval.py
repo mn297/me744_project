@@ -40,7 +40,8 @@ gt_semantic = sorted(
 rcnn_out = sorted(
     glob.glob(
         os.path.join(
-            "C:/Users/john/Documents/programming_dirty/me744_project/datasets/predictions/Fuji-Apple-Segmentation-Augmented",
+            "C:/Users/john/Documents/programming_dirty/me744_project/datasets/predictions/Fuji-Apple-Segmentation-Augmented-Without-Retrain",
+            # "C:/Users/john/Documents/programming_dirty/me744_project/datasets/predictions/Fuji-Apple-Segmentation-Augmented",
             "*.pkl",
         ),
         recursive=True,
@@ -49,7 +50,8 @@ rcnn_out = sorted(
 unet_out = sorted(
     glob.glob(
         os.path.join(
-            "C:/Users/john/Documents/programming_dirty/me744_project/datasets/predictions/unet_baseline",
+            # "C:/Users/john/Documents/programming_dirty/me744_project/datasets/predictions/unet_baseline",
+            "C:/Users/john/Documents/programming_dirty/me744_project/datasets/predictions/unet_retrained",
             "*.npy",
         ),
         recursive=True,
@@ -73,7 +75,8 @@ gt_semantic = sorted(
 num_classes = 3  # background, non-fruit, fruit
 save_seg = True
 seg_save_path = "/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/visualizations/mixed/test_on_good_mix/merged"
-seg_save_path = "C:/Users/john/Documents/programming_dirty/me744_project/datasets/predictions/merged"
+seg_save_path = "C:/Users/john/Documents/programming_dirty/me744_project/datasets/predictions/merged_baseline"
+# seg_save_path = "C:/Users/john/Documents/programming_dirty/me744_project/datasets/predictions/merged_retrained"
 
 assert (
     len(rcnn_out) == len(unet_out) == len(gt_semantic)
@@ -98,6 +101,8 @@ for i, (r, u, g) in enumerate(zip(rcnn_out, unet_out, gt_semantic)):
     u_mask = np.load(u)
     print(np.unique(u_mask))
     merged_mask = u_mask.copy()
+    # Set Branches (2) from UNet
+    merged_mask[u_mask == 1] = 2
     if r_mask.shape[0] != 0:
         assert r_mask.shape[-2:] == u_mask.shape
         assert (len(np.unique(r_mask)) <= 2) and (np.max(r_mask) == 1)
@@ -106,10 +111,7 @@ for i, (r, u, g) in enumerate(zip(rcnn_out, unet_out, gt_semantic)):
         # merge semantic masks
         r_mask = np.max(r_mask, axis=0)
         assert (len(np.unique(r_mask)) <= 2) and (np.max(r_mask) == 1)
-        
-        # Set Branches (2) from UNet
-        merged_mask[u_mask == 1] = 2
-        
+
         # Set Apples (1) from R-CNN
         merged_mask[r_mask != 0] = 1  # all fruits
 

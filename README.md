@@ -1,93 +1,30 @@
-# ME744 Project - Apple Detection and Segmentation
+# ME744 Project Map
 
-Apple detection and segmentation using SAM2 on the Fuji-SfM dataset.
+What lives where:
+- `maskrcnn/` — COCO-format pipeline, converters, Mask R-CNN + YOLO flows.
+- `unet/Pytorch-UNet/` — standalone U-Net trainer/inferencer (see its README for flags).
+- `datasets/` — raw data and produced predictions.
+- References: `maskrcnn/torchvision_references/`, `maskrcnn/Mask_RCNN/`, `maskrcnn/JSON2YOLO/` (vendor/upstream helpers).
 
-## Setup
+Data prep (pick what you need):
+- Conversions: `maskrcnn/convert_envy_to_coco.py`, `convert_fuji_to_coco.py`, `convert_coco_to_yolo.py`, `convert_coco_to_unet.py`, `convert_envy_to_unet.py`.
+- Relabel/merge: `maskrcnn/mix_datasets.py`, `from4lg_to2lb.py`.
+- Augment: `maskrcnn/augment_fuji.py`.
 
-Install dependencies with uv:
+Training entrypoints:
+- Mask R-CNN: `maskrcnn/train_maskrcnn.py` (YAML configs: `maskrcnn/experiment_*.yaml`; outputs to `maskrcnn/runs` and `checkpoints`).
+- YOLO: `maskrcnn/train_yolo.py` (expects YOLO data; weights in `maskrcnn/yolo*.pt`).
+- U-Net: `unet/Pytorch-UNet/train.py` (expects U-Net masks).
 
-```bash
-uv sync
-```
+Inference / visualization:
+- Mask R-CNN: `maskrcnn/predict_maskrcnn.py`.
+- YOLO: `maskrcnn/predict_yolo.py`, `visualize_yolo.py`, `visualize_yolo_quick.py`.
+- U-Net: `unet/Pytorch-UNet/predict.py`, `maskrcnn/predict_unet.py`.
+- Fusion/ensembling: `maskrcnn/predict_fusion.py`, `maskrcnn/merge_and_eval.py`.
+- Quick helpers: `maskrcnn/visualize_fusion.py`, `maskrcnn/color_picker.py`.
 
-Download datasets and install SAM2:
-
-```bash
-source .venv/bin/activate
-python setup.py
-```
-
-This will:
-- Download and extract the Fuji-SfM dataset
-- Clone SAM2 to `~/sam2` and install it
-- You'll need to manually download the checkpoint: `sam2.1_hiera_large.pt` to `~/sam2/checkpoints/`
-
-## Usage
-
-### Visualize ground truth annotations
-
-```bash
-python fuji_visualize_ground_truth_masks.py
-```
-
-Loads polygon annotations from CSV files and creates visualizations.
-
-Output: `fuji_sfm_data/Fuji-SfM_dataset/ground_truth_visualizations/`
-
-### SAM2 segmentation
-
-```bash
-python fuji_sam2.py
-```
-
-Interactive and automatic segmentation examples using SAM2.
-
-Output: `fuji_sfm_data/Fuji-SfM_dataset/sam2_results/`
-
-### Train custom CNN
-
-```bash
-python fuji_train.py
-```
-
-Trains a simple U-Net on the dataset, validates, and visualizes results.
-
-Output: `training_outputs/`
-
-All scripts work as Jupyter notebooks (use the `# %%` cell markers).
-
-## Dataset Structure
-
-```
-fuji_sfm_data/Fuji-SfM_dataset/
-├── 1-Mask-set/
-│   ├── training_images_and_annotations/
-│   │   ├── *.jpg                     # Images
-│   │   └── mask_*.csv                # Polygon annotations
-│   └── validation_images_and_annotations/
-├── 2-SfM-set/
-│   ├── raw_images_east_side/
-│   └── raw_images_west_side/
-└── 3-3D_data/
-    └── Fuji_apple_trees_point_cloud.txt
-```
-
-## Requirements
-
-- Python >= 3.12
-- PyTorch >= 2.8.0 (CUDA 12.8)
-- Open3D, OpenCV, matplotlib
-
-Optional tools for faster setup:
-- `aria2`, `wget` for downloads
-- `unrar` or `unar` for RAR extraction
-
-## Scripts
-
-**setup.py** - Downloads datasets and installs SAM2
-
-**fuji_sam2.py** - SAM2 segmentation (interactive prompts and automatic masks)
-
-**fuji_visualize_ground_truth_masks.py** - Visualize polygon annotations and create masks
-
-**fuji_train.py** - Train custom U-Net CNN for apple segmentation
+How it connects:
+- Convert raw data into the target format (COCO, YOLO, or U-Net masks) with the converters above.
+- Train with the matching entrypoint.
+- Predict/visualize with the paired script.
+- Optionally fuse or aggregate outputs via `predict_fusion.py` or `merge_and_eval.py`.

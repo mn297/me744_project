@@ -81,6 +81,7 @@ def mask_to_image(mask: np.ndarray, mask_values):
 
 # python unet/Pytorch-Unet/predict.py -i "/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/mixed/test/img" -m "/Users/ziyaoshang/Desktop/MEproject/me744_project/unet/Pytorch-UNet/checkpoint/mixed_epoch15_retrain.pth" -o "/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/mixed/test/results" -c 2 -g "/Users/ziyaoshang/Desktop/MEproject/DAFormer/data/source/mixed/test/seg" --viz
 
+GT_INDEX_VALUE = 2
 if __name__ == '__main__':
     args = get_args()
     logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
@@ -121,6 +122,11 @@ if __name__ == '__main__':
     dices = []
     mious = []
     save_outputs = False
+    if save_outputs:
+        # If output is a single directory, ensure it exists
+        if len(args.output) == 1 and not any(args.output[0].endswith(ext) for ext in ['.png', '.jpg', '.jpeg']):
+             os.makedirs(args.output[0], exist_ok=True)
+
     for i, filename in enumerate(in_files):
         logging.info(f'Predicting image {filename} ...')
         if filename.endswith('.npy'):
@@ -148,7 +154,8 @@ if __name__ == '__main__':
         # compute scores if ground truth available
         if args.ground_truth and gt_files:
             gt_mask = np.load(gt_files[i])
-            gt_mask = gt_mask == 1  # binary mask for fruit class
+            # CHANGE THIS DEPENDING ON THE GT LABELS, SOMETIMES 1, SOMETIMES 2
+            gt_mask = gt_mask == GT_INDEX_VALUE
 
             # compute mIoU
             intersection = np.logical_and(gt_mask, mask)

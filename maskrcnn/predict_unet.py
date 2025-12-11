@@ -18,6 +18,8 @@ UNET_ROOT = PROJECT_ROOT / "unet" / "Pytorch-UNet"
 sys.path.append(str(UNET_ROOT))
 
 GT_INDEX_VALUE = 2
+# Default mask colors for color-based GT extraction (matches predict_maskrcnn.py)
+DEFAULT_MASK_COLORS = [[255, 0, 0]]
 try:
     from unet import UNet
     from utils.data_loading import BasicDataset
@@ -50,8 +52,12 @@ def compute_metrics(pred_mask: np.ndarray, gt_mask: np.ndarray):
     """
     # Ensure binary
     pred = pred_mask == 1
-    # CHANGEHERE DEPENDING ON THE GT LABELS, SOMETIMES 1, SOMETIMES 2
-    gt = gt_mask == GT_INDEX_VALUE
+    # If gt_mask is already boolean, use it directly; otherwise compare to GT_INDEX_VALUE
+    if gt_mask.dtype == bool:
+        gt = gt_mask
+    else:
+        # CHANGEHERE DEPENDING ON THE GT LABELS, SOMETIMES 1, SOMETIMES 2
+        gt = gt_mask == GT_INDEX_VALUE
 
     if not np.any(gt):
         return -1.0, -1.0
@@ -69,6 +75,39 @@ def compute_metrics(pred_mask: np.ndarray, gt_mask: np.ndarray):
     dice = (2 * intersection) / (pred.sum() + gt.sum())
 
     return float(iou), float(dice)
+
+
+def construct_mask_from_colors(
+    image_np: np.ndarray, mask_colors, tolerance: int = 10
+) -> np.ndarray:
+    """
+    Build a boolean mask where pixels matching any of the provided colors (within tolerance) are True.
+    Args:
+        image_np: numpy array [H, W, C] (RGB or RGBA)
+        mask_colors: list of [R, G, B] colors or single [R, G, B]
+        tolerance: per-channel tolerance for color match
+    Returns:
+        boolean mask [H, W]
+    """
+    img = np.array(image_np)
+    if img.shape[-1] >= 3:
+        img_rgb = img[:, :, :3]
+    else:
+        img_rgb = img
+
+    colors = mask_colors
+    if len(np.array(colors).shape) == 1:
+        colors = [colors]
+
+    img_int16 = img_rgb.astype(np.int16)
+    mask = np.zeros((img.shape[0], img.shape[1]), dtype=bool)
+
+    for color in colors:
+        diff = np.abs(img_int16 - color)
+        current_match = np.all(diff < tolerance, axis=-1)
+        mask = np.logical_or(mask, current_match)
+
+    return mask
 
 
 def predict_single_image(net, full_img, device, scale_factor=1.0, out_threshold=0.5):
@@ -169,6 +208,18 @@ def main():
         "--save-npy",
         action="store_true",
         help="Save predicted masks as .npy files",
+    )
+    parser.add_argument(
+        "--mask-colors",
+        type=str,
+        default=None,
+        help="JSON list of RGB colors to extract GT mask from label images (e.g., '[[226,134,234],[207,125,248]]'). If set, overrides GT_INDEX_VALUE logic.",
+    )
+    parser.add_argument(
+        "--color-tolerance",
+        type=int,
+        default=10,
+        help="Per-channel tolerance when matching mask colors.",
     )
     args = parser.parse_args()
 
@@ -284,7 +335,24 @@ def main():
     total_dice = 0.0
     valid_count = 0
 
+    # Parse mask colors if provided
+    mask_colors = None
+    if args.mask_colors:
+        try:
+            mask_colors = json.loads(args.mask_colors)
+        except json.JSONDecodeError as e:
+            print(f"Error parsing --mask-colors: {e}")
+            print("Expected JSON like: '[[226,134,234],[207,125,248]]'")
+            return
+        print(
+            f"Using color-based GT extraction with colors: {mask_colors}, tolerance={args.color_tolerance}"
+        )
+
     for img_path in tqdm(img_files, desc="Processing images"):
+        # Skip label helper files (e.g., *_label.png) from the images list
+        if "_label" in img_path.name:
+            continue
+
         # Load Image
         if img_path.suffix == ".npy":
             img_arr = np.load(img_path)
@@ -303,7 +371,23 @@ def main():
         iou = -1.0
         dice = -1.0
 
-        if mask_dir and mask_dir.exists():
+        # Priority 1: sidecar *_label file in same folder (matches predict_maskrcnn.py behavior)
+        label_candidates = [
+            img_path.parent / f"{img_path.stem}_label{img_path.suffix}",
+            img_path.parent / f"{img_path.stem}_label.png",
+            img_path.parent / f"{img_path.stem}_label.jpg",
+        ]
+        for cand in label_candidates:
+            if cand.exists():
+                label_img = np.array(Image.open(cand).convert("RGB"))
+                colors_for_gt = mask_colors if mask_colors is not None else DEFAULT_MASK_COLORS
+                gt_mask = construct_mask_from_colors(
+                    label_img, colors_for_gt, tolerance=args.color_tolerance
+                )
+                break
+
+        # Priority 2: mask_dir (numeric masks)
+        if gt_mask is None and mask_dir and mask_dir.exists():
             gt_path = mask_dir / img_path.name
             if gt_path.exists():
                 if gt_path.suffix == ".npy":
@@ -311,17 +395,24 @@ def main():
                 else:
                     gt_mask = np.array(Image.open(gt_path))
 
-                # Compute Metrics
-                iou, dice = compute_metrics(pred_mask, gt_mask)
+                # Optional: build GT mask from colors when mask is RGB
+                if mask_colors is not None and gt_mask.ndim == 3:
+                    gt_mask = construct_mask_from_colors(
+                        gt_mask, mask_colors, tolerance=args.color_tolerance
+                    )
 
-                per_file_metrics[img_path.name] = {
-                    "branches": {"iou": iou, "dice": dice}
-                }
+        # Compute Metrics (if GT found)
+        if gt_mask is not None:
+            iou, dice = compute_metrics(pred_mask, gt_mask)
 
-                if iou != -1.0:
-                    total_iou += iou
-                    total_dice += dice
-                    valid_count += 1
+            per_file_metrics[img_path.name] = {
+                "branches": {"iou": iou, "dice": dice}
+            }
+
+            if iou != -1.0:
+                total_iou += iou
+                total_dice += dice
+                valid_count += 1
 
         # Save Visualization
         save_path = output_dir / f"pred_{img_path.stem}.png"

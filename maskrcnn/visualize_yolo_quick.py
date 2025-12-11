@@ -11,7 +11,8 @@ dataset_dir = Path(__file__).parent.parent / "datasets"
 dataset_name = "Fuji-Apple-Segmentation_with_envy_mask_yolo"
 YOLO_ROOT = dataset_dir / dataset_name
 SPLIT = "train"  # 'train' or 'val'
-NUM_IMAGES = 5
+NUM_ROWS = 5  # rows; each row has [original, ground truth]
+NUM_COLS = 2
 
 
 def visualize_yolo():
@@ -33,20 +34,24 @@ def visualize_yolo():
     # 3. Get list of images
     valid_exts = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
     images = [p for p in img_dir.glob("*") if p.suffix.lower() in valid_exts]
-    images = sorted(images)[:NUM_IMAGES]
+    images = sorted(images)[:NUM_ROWS]
 
     if not images:
         print(f"No images found in {img_dir}")
         return
 
     # 4. Loop and Visualize
-    plt.figure(figsize=(15, 10))
+    fig, axes = plt.subplots(len(images), NUM_COLS, figsize=(12, 3 * len(images)))
+    if len(images) == 1:
+        axes = np.array([axes])  # ensure 2D indexing
 
-    for i, img_path in enumerate(images):
+    for row_idx, img_path in enumerate(images):
         # Read Image
         img = cv2.imread(str(img_path))
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         h, w = img.shape[:2]
+        img_orig = img.copy()
+        img_gt = img.copy()
 
         # Construct Label Path:
         # usually .../images/train/1.jpg -> .../labels/train/1.txt
@@ -83,13 +88,13 @@ def visualize_yolo():
                 )
 
                 # Draw outline
-                cv2.polylines(img, [points], isClosed=True, color=color, thickness=2)
+                cv2.polylines(img_gt, [points], isClosed=True, color=color, thickness=2)
 
                 # Optional: Fill with transparency
-                overlay = img.copy()
+                overlay = img_gt.copy()
                 cv2.fillPoly(overlay, [points], color=color)
                 alpha = 0.4
-                img = cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0)
+                img_gt = cv2.addWeighted(overlay, alpha, img_gt, 1 - alpha, 0)
 
                 # Draw Label Text
                 label_text = class_names.get(cls_id, str(cls_id))
@@ -107,11 +112,16 @@ def visualize_yolo():
         else:
             print(f"No label file for {img_path.name}")
 
-        # Plot
-        plt.subplot(1, NUM_IMAGES, i + 1)
-        plt.imshow(img)
-        plt.axis("off")
-        plt.title(img_path.name, fontsize=8)
+        # Plot original (left) and GT (right)
+        ax_orig = axes[row_idx, 0]
+        ax_gt = axes[row_idx, 1]
+        ax_orig.imshow(img_orig)
+        ax_orig.axis("off")
+        ax_orig.set_title(f"{img_path.name} – Original", fontsize=8)
+
+        ax_gt.imshow(img_gt)
+        ax_gt.axis("off")
+        ax_gt.set_title(f"{img_path.name} – Ground Truth", fontsize=8)
 
     plt.tight_layout()
     plt.show()

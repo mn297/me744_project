@@ -53,7 +53,8 @@ def pick_color(image_path):
 
 if __name__ == "__main__":
     # img_path = "C:/Users/john/Documents/programming_dirty/me744_project/maskrcnn_coco/test_img/4997_rgb_0001_label.png"
-    img_path = "C:/Users/john/Documents/programming_dirty/me744_project/maskrcnn_coco/test_img/3448_rgb_0001_withapples_label.png"
+    # img_path = "C:/Users/john/Documents/programming_dirty/me744_project/maskrcnn_coco/test_img/3448_rgb_0001_withapples_label.png"
+    img_path = "C:/Users/john/Documents/programming_dirty/me744_project/maskrcnn/test_img_blender/rgb_008_label.png"
 
     # img_path = "C:/Users/john/Documents/programming_dirty/me744_project/datasets/image_envy_5000/0010_label_rgb_0001.png"
 

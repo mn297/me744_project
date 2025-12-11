@@ -293,7 +293,7 @@ import scipy.ndimage
 
 # RGBA of custom mask
 # [216, 147, 236, 255]
-APPLE_MASK_COLOR = [[226, 134, 234], [207, 125, 248]]
+APPLE_MASK_COLOR = [[226, 134, 234], [207, 125, 248], [0, 255, 255]]
 
 
 def construct_ground_truth(image_np, mask_color=APPLE_MASK_COLOR):
@@ -414,6 +414,12 @@ def visualize_custom_folder(
 
     print(f"Processing {len(image_files)} images from {folder_path}...")
 
+    # Metrics accumulators (semantic/global IoU + Dice)
+    per_file_metrics = {}
+    total_iou = 0.0
+    total_dice = 0.0
+    valid_count = 0
+
     for img_path in tqdm(image_files):
         # Skip label files if they are in the same folder and end with _label
         if "_label" in img_path.name:
@@ -446,6 +452,23 @@ def visualize_custom_folder(
             category_mapping=category_mapping,
         )
 
+        # Compute metrics if GT is available
+        if target is not None:
+            keep = output["scores"] >= score_threshold
+            pred_masks = output["masks"][keep].detach().cpu().numpy() > 0.5
+            if pred_masks.ndim == 4:  # [N, 1, H, W] -> [N, H, W]
+                pred_masks = pred_masks.squeeze(1)
+            target_masks = target["masks"].cpu().numpy() > 0
+
+            iou, dice = compute_metrics(pred_masks, target_masks)
+            per_file_metrics[img_path.name] = {
+                "apple": {"iou": float(iou), "dice": float(dice)}
+            }
+            if iou != -1.0:
+                total_iou += iou
+                total_dice += dice
+                valid_count += 1
+
         # Save
         save_name = output_path / f"pred_{img_path.name}"
         fig.savefig(save_name, dpi=100, bbox_inches="tight")
@@ -461,7 +484,36 @@ def visualize_custom_folder(
         with open(file_path, "wb") as f:
             pickle.dump((output), f)
 
-    print(f"[SUCCESS] Visualizations saved to {output_dir}")
+    # Save metrics summary (only if we had GT masks)
+    if per_file_metrics:
+        avg_iou = total_iou / valid_count if valid_count > 0 else 0.0
+        avg_dice = total_dice / valid_count if valid_count > 0 else 0.0
+
+        metrics_summary = {
+            "metadata": {
+                "mode": "custom_folder",
+                "folder": str(folder_path),
+                "score_threshold": score_threshold,
+                "timestamp": datetime.now().strftime("%Y%m%d_%H%M%S"),
+            },
+            "average": {
+                "apple": {
+                    "average_iou": float(avg_iou),
+                    "average_dice": float(avg_dice),
+                    "valid_images": valid_count,
+                }
+            },
+            "per_file": per_file_metrics,
+        }
+
+        with open(output_path / "metrics.json", "w") as f:
+            json.dump(metrics_summary, f, indent=4)
+
+        print(f"[SUCCESS] Visualizations saved to {output_dir}")
+        print(f"[SUCCESS] Metrics saved to {output_path / 'metrics.json'}")
+    else:
+        print(f"[SUCCESS] Visualizations saved to {output_dir}")
+        print("[INFO] No ground truth masks found; metrics.json not generated.")
 
 
 def visualize_coco_dataset(
